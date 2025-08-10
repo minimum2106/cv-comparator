@@ -1,0 +1,61 @@
+Damien Khellaf
+📍 Lille – 59800
+📞 06 98 33 74 20
+📧 damien.khellaf.dev@gmail.com
+💻 github.com/damkhl
+🔗 linkedin.com/in/damienkhellaf
+
+🧑‍💻 Développeur Logiciel Junior
+Diplômé d’un DUT informatique et passionné par le développement backend. J’ai participé à plusieurs projets open source et je cherche à intégrer une équipe tech pour continuer à monter en compétence.
+
+🎓 FORMATION
+BUT Informatique – Université de Lille
+2021 – 2024
+
+Spécialité : développement et déploiement d'applications
+
+Projet de fin d’études : "Plateforme de gestion d’inventaire pour associations étudiantes" (Symfony + Vue.js)
+
+Baccalauréat Scientifique – Spécialité Numérique et Sciences Informatiques
+2021 – Mention Bien
+
+💼 EXPÉRIENCE
+Stage – Développeur web – DataKube Systems (startup fictive)
+Mars – Août 2024
+
+Participation à la refonte de l’API REST (Laravel)
+
+Création d’un dashboard admin avec Vue.js
+
+Rédaction de documentation technique interne
+
+Projet freelance – Site vitrine pour un salon de tatouage (Piercy Ink)
+Novembre 2023 – Janvier 2024
+
+Wordpress + CSS custom
+
+Formation client à l’usage de l’interface
+
+🛠 COMPÉTENCES TECHNIQUES
+Langages : PHP, JavaScript, Python
+
+Frameworks : Symfony, Laravel, Vue.js
+
+BDD : MySQL, MongoDB
+
+Git, Docker, Postman, Linux
+
+Méthodo Agile (Scrum, Trello)
+
+🌐 LANGUES
+Français : Natif
+
+Anglais : Technique (documentation, Stack Overflow, GitHub issues)
+
+⚙️ DIVERS
+Passion pour l’open source
+
+Contributeur au projet LibreTime
+
+Gamer PC (Dev de mod Minecraft en Python)
+
