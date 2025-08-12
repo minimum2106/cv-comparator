@@ -1,42 +1,28 @@
+from typing import Dict, List
+from dotenv import load_dotenv
 import uuid
+import json
+
 from langchain.tools import StructuredTool
 from langchain_core.messages import SystemMessage, HumanMessage, ToolMessage
-
+from langchain_core.vectorstores import InMemoryVectorStore
+from langchain_core.documents import Document
+from langchain_openai import OpenAIEmbeddings
+from langchain_groq import ChatGroq
 from pydantic import BaseModel, Field
-from typing import Dict, List
+
+from agents.writer_agent import WriterAgent
+from agents.comparator_agent import ComparatorAgent
+from agents.scorecard_agent import ScorecardAgent
 
 
-class AgentTool(BaseModel):
-    """Metadata for an agent tool."""
-
-    name: str = Field(..., description="Name of the tool")
-    description: str = Field(..., description="Description of the tool")
-    capabilities: List[str] = Field(default_factory=list, description="Capabilities of the tool")
-    input_types: List[str] = Field(default_factory=list, description="Input types accepted by the tool")
-    output_types: List[str] = Field(default_factory=list, description="Output types produced by the tool")
-    category: str = Field(..., description="Category of the tool")
-    complexity: str = Field(..., description="Complexity level of the tool")
-    dependencies: List[str] = Field(default_factory=list, description="Dependencies required by the tool")
-    usage_examples: List[str] = Field(default_factory=list, description="Usage examples for the tool")
-    performance_score: float = Field(0.0, description="Performance score of the tool")
-    usage_count: int = Field(0, description="Number of times the tool has been used")
-    tags: List[str] = Field(default_factory=list, description="Tags associated with the tool")
-    created_at: str = Field(..., description="Creation timestamp of the tool metadata")
-
+load_dotenv()
 
 class QueryForTools(BaseModel):
     """Generate a query for additional tools."""
 
     query: str = Field(..., description="Query for additional tools.")
 
-
-from langchain_core.documents import Document
-from langchain_core.vectorstores import InMemoryVectorStore
-from langchain_openai import OpenAIEmbeddings
-from langchain_groq import ChatGroq
-from dotenv import load_dotenv
-
-load_dotenv()
 
 class ToolRag:
     def __init__(self):
@@ -108,11 +94,6 @@ class ToolRag:
 
         
         return selected_tools
-
-    
-import json
-from langchain.tools import StructuredTool
-from agents.test import ToolRag
 
 
 # 1. CV File Reader Tool
@@ -220,6 +201,9 @@ def setup_tool_rag():
         cv_comparison_tool,
         report_tool,
         email_tool,
+        WriterAgent(),
+        ComparatorAgent(),
+        ScorecardAgent(),
     ]:
         tool_rag.add_tool(tool)
         print(f"Added tool: {tool.name}")
