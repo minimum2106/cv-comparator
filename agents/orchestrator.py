@@ -12,7 +12,7 @@ from langgraph.graph import StateGraph, END, START
 from pydantic import BaseModel, Field
 
 from agents.prompts import GENERATE_PLAN_SYSTEM_PROMPT
-from agents.tool_store import tool_retriever
+from agents.tool_retriever import tool_retriever
 
 
 class TaskStep(BaseModel):
