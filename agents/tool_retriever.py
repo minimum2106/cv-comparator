@@ -1,9 +1,9 @@
 from typing import Dict, List
 from dotenv import load_dotenv
 import uuid
-import json
+import os
 
-from langchain.tools import StructuredTool
+from langchain.tools import StructuredTool, tool
 from langchain_core.retrievers import BaseRetriever
 from langchain_core.callbacks import CallbackManagerForRetrieverRun
 from langchain_core.documents import Document
@@ -57,7 +57,7 @@ class ToolRetriever(BaseRetriever):
         enhanced_query = self._generate_enhanced_query(query)
 
         # Search vector store
-        tool_documents = self.vector_store.similarity_search(enhanced_query, k=1)
+        tool_documents = self.vector_store.similarity_search(enhanced_query, k=2)
 
         # Enhance documents with tool metadata
         enhanced_docs = []
@@ -157,13 +157,82 @@ class ToolRetriever(BaseRetriever):
         return results
 
 
+class ReadTxtDirectoryInput(BaseModel):
+    directory: str = Field(
+        ...,
+        description="Directory path containing .txt files to read.",
+    )
+
+
+@tool(
+    name_or_callable="read_txt_directory",
+    description="Read all txt files in a directory and return their contents with filenames.",
+    args_schema=ReadTxtDirectoryInput,
+)
+def read_txt_directory(directory: str) -> str:
+    """Read all .txt files from a directory and return their contents."""
+    try:
+        if not os.path.exists(directory):
+            return f"Error: Directory '{directory}' does not exist."
+
+        if not os.path.isdir(directory):
+            return f"Error: '{directory}' is not a directory."
+
+        txt_files = []
+        file_contents = []
+
+        # Get all .txt files
+        for filename in os.listdir(directory):
+            if filename.endswith(".txt"):
+                file_path = os.path.join(directory, filename)
+                try:
+                    with open(file_path, "r", encoding="utf-8") as f:
+                        content = f.read().strip()
+                        if content:  # Only include non-empty files
+                            txt_files.append(filename)
+                            file_contents.append(f"{content}")
+                except Exception as e:
+                    file_contents.append(f"Error reading file: {e}")
+
+        if not txt_files:
+            return f"No .txt files found in directory '{directory}'"
+
+        result = f"Found {len(txt_files)} txt files in '{directory}':\n"
+        result += f"Files: {', '.join(txt_files)}\n\n"
+        result += "\n\n".join(file_contents)
+
+        return result
+
+    except Exception as e:
+        return f"Error accessing directory '{directory}': {str(e)}"
+
+
+class ReadTxtFileInput(BaseModel):
+    file_path: str = Field(
+        ...,
+        description="Path to the .txt file to read.",
+    )
+
+
+@tool(
+    name_or_callable="read_txt_file",
+    description="Extract content from a txt file.",
+    args_schema=ReadTxtFileInput,
+)
+def read_txt_file(file_path: str) -> str:
+    with open(file_path, "r", encoding="utf-8") as f:
+        return f.read().strip()
+
+
 # Initialize and populate ToolRetriever
 def setup_tool_retriever() -> ToolRetriever:
-    """Setup and populate the ToolRRetriever."""
+    """Setup and populate the ToolRetriever."""
     tool_retriever = ToolRetriever()
 
     # Add tools
     tools = [
+        read_txt_file,
+        read_txt_directory,
         WriterAgent(),
         ComparatorAgent(),
         ScorecardAgent(),
@@ -171,8 +240,8 @@ def setup_tool_retriever() -> ToolRetriever:
 
     for tool in tools:
         tool_retriever.add_tool(tool)
-        print(f"Added tool: {tool.name}")
 
     return tool_retriever
+
 
 tool_retriever = setup_tool_retriever()
