@@ -1,14 +1,15 @@
-from typing import List, Union
+from typing import List, Union, Annotated, Dict
+import tomllib
+import operator
 import uuid
 import re
 
 from langchain_core.messages import HumanMessage, SystemMessage
-from langchain_core.output_parsers import JsonOutputParser
 from langchain_core.tools import BaseTool
-from langchain.retrievers.document_compressors import CohereRerank
-from langchain_groq import ChatGroq
 from langgraph.prebuilt import create_react_agent
 from langgraph.graph import StateGraph, END, START
+from langchain_groq import ChatGroq
+from langchain_openai import ChatOpenAI
 from pydantic import BaseModel, Field
 
 from agents.prompts import GENERATE_PLAN_SYSTEM_PROMPT
@@ -21,14 +22,17 @@ class TaskStep(BaseModel):
     description: str = Field(
         description="Detailed description of what this step accomplishes"
     )
-    inputs: Union[BaseModel, None] = Field(
-        default=None, description="Dictionary of required inputs with descriptions"
+    inputs: Union[str, None] = Field(
+        default="", description="Descriptions of the inputs for this step"
     )
-    outputs: Union[BaseModel, None] = Field(
-        default=None, description="Dictionary of expected outputs with descriptions"
+    outputs: Union[str, None] = Field(
+        default="", description="Descriptions of the expected outputs for this step"
     )
     tools: List[BaseTool] = Field(
         default_factory=list, description="List of tools required for this step"
+    )
+    dependencies: List[str] = Field(
+        default_factory=list, description="List of step names that this step depends on"
     )
 
 
@@ -40,7 +44,7 @@ class OrchestratorState(BaseModel):
     user_query: str
     plan: str = ""
     steps: List[TaskStep] = []
-    past_steps: List[tuple] = []
+    past_steps: Annotated[List[tuple], operator.add] = []
     response: str = ""
     current_step_index: int = 0  # Remove all_tools
 
@@ -48,8 +52,8 @@ class OrchestratorState(BaseModel):
 class Orchestrator:
     def __init__(self):
         self.agent_database = {}
-        self.llm = ChatGroq(
-            model="meta-llama/llama-4-scout-17b-16e-instruct",
+        self.llm = ChatOpenAI(
+            model="gpt-4o",
             temperature=0.0,
             streaming=False,
         )
@@ -69,11 +73,7 @@ class Orchestrator:
         if hasattr(final_state, "response") and final_state.response:
             final_answer = final_state.response
         else:
-            # Generate final response from completed steps
-            final_answer = self._generate_final_response(final_state)
-
-        print(f"\n🎯 FINAL ANSWER:")
-        print(f"{final_answer}")
+            final_answer = "No response generated."
 
         return final_answer
 
@@ -116,11 +116,8 @@ class Orchestrator:
 
         Instructions:
         1. Analyze the query complexity and determine the optimal workflow pattern
-        2. Break down the objective into 4-8 logical, executable steps
+        2. Break down the objective into executable steps
         3. Ensure each step has clear purpose, inputs, and outputs
-        4. Design proper data flow between steps
-        5. Include quality assurance and validation where needed
-        6. Create a mermaid flowchart showing the workflow dependencies
 
         Focus on creating an actionable plan that can be executed by specialized agents and tools to fully accomplish the user's objective.
         """
@@ -136,37 +133,108 @@ class Orchestrator:
 
     def _generate_tasks(self, state: OrchestratorState):
         """
-        Generate tasks from plan XML and return list of TaskStep objects.
+        Generate tasks from markdown plan and return list of TaskStep objects.
         """
         plan = state.plan
         tasks = []
 
-        # Extract steps from XML
-        step_pattern = (
-            r"<step>\s*<name>(.*?)</name>\s*<description>(.*?)</description>\s*</step>"
-        )
-        matches = re.findall(step_pattern, plan, re.DOTALL)
+        # Extract steps from markdown format
+        # Pattern to match: ### Step X: step_name
+        step_pattern = r"### Step \d+: ([a-zA-Z_][a-zA-Z0-9_]*)"
 
-        print(f"📋 Found {len(matches)} steps in plan")
+        # Split plan into sections by step headers
+        step_sections = re.split(step_pattern, plan)[1:]  # Remove first empty element
 
-        for step_name, step_description in matches:
-            # Clean text
-            step_name = step_name.strip()
-            step_description = step_description.strip()
+        # Process pairs of (step_name, content)
+        step_pairs = []
+        for i in range(0, len(step_sections), 2):
+            if i + 1 < len(step_sections):
+                step_name = step_sections[i].strip()
+                step_content = step_sections[i + 1].strip()
+                step_pairs.append((step_name, step_content))
 
-            # Create TaskStep
+        print(f"📋 Found {len(step_pairs)} steps in plan")
+
+        for step_name, step_content in step_pairs:
+            # Extract input from the content
+            input_match = re.search(
+                r"- \*\*Input\*\*:\s*(.*?)(?=\n-|\n###|$)",
+                step_content,
+                re.DOTALL,
+            )
+
+            # Extract output from the content
+            output_match = re.search(
+                r"- \*\*Output\*\*:\s*(.*?)(?=\n-|\n###|$)",
+                step_content,
+                re.DOTALL,
+            )
+
+            # Extract description from the content
+            description_match = re.search(
+                r"- \*\*Description\*\*:\s*(.*?)(?=\n-|\n###|$)",
+                step_content,
+                re.DOTALL,
+            )
+
+            # Extract dependencies from the content
+            dependencies_match = re.search(
+                r"- \*\*Dependencies\*\*:\s*(.*?)(?=\n-|\n###|$)",
+                step_content,
+                re.DOTALL,
+            )
+
+            # Get input description or fallback
+            if input_match:
+                step_input = input_match.group(1).strip()
+            else:
+                step_input = "No input specified"
+
+            # Get output description or fallback
+            if output_match:
+                step_output = output_match.group(1).strip()
+            else:
+                step_output = "No output specified"
+
+            # Get description or fallback
+            if description_match:
+                step_description = description_match.group(1).strip()
+            else:
+                # Fallback: use first non-empty line as description
+                lines = [
+                    line.strip() for line in step_content.split("\n") if line.strip()
+                ]
+                step_description = lines[0] if lines else f"Execute {step_name}"
+
+            # Get dependencies or fallback
+            if dependencies_match:
+                dependencies_text = dependencies_match.group(1).strip()
+                # Parse dependencies - handle "None" or comma-separated values
+                if dependencies_text.lower() in ["none", "n/a", ""]:
+                    step_dependencies = []
+                else:
+                    # Split by comma and clean up whitespace
+                    step_dependencies = [
+                        dep.strip()
+                        for dep in dependencies_text.split(",")
+                        if dep.strip()
+                    ]
+            else:
+                step_dependencies = []
+
+            # Create TaskStep with all extracted information
             task_step = TaskStep(
                 step_id=str(uuid.uuid4()),
                 name=step_name,
                 description=step_description,
-                inputs=None,
-                outputs=None,
+                inputs=step_input,
+                outputs=step_output,
+                dependencies=step_dependencies,  # Add dependencies
                 tools=[],
             )
 
             tasks.append(task_step)
             print(f"   ✅ {step_name}")
-
 
         return {"steps": tasks}
 
@@ -195,7 +263,6 @@ class Orchestrator:
             if hasattr(tool_doc, "metadata") and "tool_object" in tool_doc.metadata:
                 tool_obj = tool_doc.metadata["tool_object"]
                 step_tools.append(tool_obj)
-                break  # Only take the first tool
 
         # Handle case when no tools are available
         if not step_tools:
@@ -203,22 +270,30 @@ class Orchestrator:
             print(f"🧠 Falling back to LLM reasoning...")
             return self._execute_with_llm_reasoning(current_step, state)
 
-        print(f"   🛠️ Using tool: {step_tools[0].name}")
-
         # Build plan string from all steps for context
         plan_str = "\n".join(
             f"{i + 1}. {step.description}" for i, step in enumerate(state.steps)
         )
 
+        filtered_context = [f"- This is result of {step_name}: {result}" if step_name in current_step.dependencies else "" for step_name, result in state.past_steps]
+
         task_formatted = f"""For the following plan:
             {plan_str}
 
-            You are tasked with executing step {state.current_step_index + 1}: {current_step.description}
+            You are tasked with executing step {state.current_step_index + 1}: {current_step.name}
+            which you have to execute {current_step.description}
+            with the following input's description:
+            {current_step.inputs}
+
+            and expected output's description:
+            {current_step.outputs}
 
             Previous completed steps:
-            {chr(10).join([f"- {step}: {result}" for step, result in state.past_steps])}
+            {chr(10).join(filtered_context)}
 
-            Execute this step and provide the result.
+            Execute this step and provide the result dont modify the result.
+            RETURN RAW RESULT !!!
+            If you failed to use the tool, dont create any information that is not provided in the plan or previous steps.
         """
 
         try:
@@ -226,19 +301,23 @@ class Orchestrator:
             agent_executor = create_react_agent(
                 self.llm,
                 step_tools,
-                prompt="You are a helpful assistant that can use tools to complete tasks.",
+                prompt="""
+                    You are a helpful assistant that can use tools to complete tasks.
+                """,
             )
+
+            print("-- Executing with tools:")
+            print(step_tools)
 
             agent_response = agent_executor.invoke(
                 {"messages": [("user", task_formatted)]}
             )
 
             result = agent_response["messages"][-1].content
-            print(f"✅ Step completed: {result[:100]}...")
-
+            print(f"✅ Step completed: {result}...")
 
             return {
-                "past_steps": [(current_step.description, result)],
+                "past_steps": [(current_step.name, result)],
                 "current_step_index": state.current_step_index + 1,
             }
 
@@ -256,10 +335,11 @@ class Orchestrator:
 
         # Build context from previous steps
         context_str = ""
+        filtered_context = [f"- {result}" if step_name in current_step.dependencies else "" for step_name, result in state.past_steps]
         if state.past_steps:
             context_str = f"""
                 Previous completed steps and their results:
-                {chr(10).join([f"- {step}: {result}" for step, result in state.past_steps])}
+                {chr(10).join(filtered_context)}
             """
 
         # Create reasoning prompt
@@ -274,9 +354,6 @@ class Orchestrator:
 
             WORKFLOW CONTEXT:
             {context_str}
-
-            FULL WORKFLOW PLAN:
-            {chr(10).join([f"{i+1}. {step.description}" for i, step in enumerate(state.steps)])}
 
             TASK:
             Since no specialized tools are available for this step, please complete it using your knowledge and reasoning.
@@ -304,7 +381,7 @@ class Orchestrator:
                 "past_steps": [
                     (current_step.description, f"LLM reasoning failed: {str(e)}")
                 ],
-                "current_step_index": state.current_step_index + 1,
+                "current_step_index": state.current_step_index,
             }
 
     def _replan_execution(self, state: OrchestratorState):
@@ -399,10 +476,9 @@ class Orchestrator:
             )
 
         try:
-            response = self.llm.with_structured_output(AlternateStep).invoke([
-                HumanMessage(content=replan_prompt)
-            ])
-            
+            response = self.llm.with_structured_output(AlternateStep).invoke(
+                [HumanMessage(content=replan_prompt)]
+            )
 
             # Parse the response
 
@@ -443,6 +519,7 @@ class Orchestrator:
 
     def _generate_final_response(self, state: OrchestratorState):
         """Generate final response when all steps are completed"""
+
         if not state.past_steps:
             return "No steps were executed successfully."
 
@@ -459,5 +536,3 @@ class Orchestrator:
 
         response = self.llm.invoke([HumanMessage(content=final_prompt)])
         return response.content
-
-
