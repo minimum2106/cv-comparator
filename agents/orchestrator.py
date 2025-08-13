@@ -52,10 +52,14 @@ class OrchestratorState(BaseModel):
 class Orchestrator:
     def __init__(self):
         self.agent_database = {}
-        self.llm = ChatOpenAI(
-            model="gpt-4o",
-            temperature=0.0,
-            streaming=False,
+        # self.llm = ChatOpenAI(
+        #     model="gpt-4o",
+        #     temperature=0.0,
+        #     streaming=False,
+        # )
+
+        self.llm = ChatGroq(
+            model="llama-3.3-70b-versatile", temperature=0.0, streaming=False
         )
 
     def run(self, user_query: str):
@@ -257,64 +261,82 @@ class Orchestrator:
         print(f"🔍 Dynamically retrieving tools for: {current_step.name}")
         tool_docs = tool_retriever.invoke(current_step.description)
 
-        # Extract actual tool objects - only take the first (best) tool
+        # Extract actual tool objects
         step_tools = []
         for tool_doc in tool_docs:
             if hasattr(tool_doc, "metadata") and "tool_object" in tool_doc.metadata:
                 tool_obj = tool_doc.metadata["tool_object"]
                 step_tools.append(tool_obj)
 
-        # Handle case when no tools are available
-        if not step_tools:
-            print(f"⚠️ No tools available for step: {current_step.name}")
-            print(f"🧠 Falling back to LLM reasoning...")
-            return self._execute_with_llm_reasoning(current_step, state)
+        print(
+            f"   🛠️ Found {len(step_tools)} tool(s): {[tool.name for tool in step_tools] if step_tools else 'None - will use LLM reasoning'}"
+        )
 
         # Build plan string from all steps for context
         plan_str = "\n".join(
             f"{i + 1}. {step.description}" for i, step in enumerate(state.steps)
         )
 
-        filtered_context = [f"- This is result of {step_name}: {result}" if step_name in current_step.dependencies else "" for step_name, result in state.past_steps]
+        # Filter context based on dependencies
+        filtered_context = []
+        for step_name, result in state.past_steps:
+            if step_name in current_step.dependencies:
+                filtered_context.append(f"- {step_name}: {result}")
 
-        task_formatted = f"""For the following plan:
+        task_formatted = f"""
+            This is the full plan for the workflow looking at the current step and only think
+            about the current step and its dependencies. The rest is only theref for context:
             {plan_str}
 
-            You are tasked with executing step {state.current_step_index + 1}: {current_step.name}
-            which you have to execute {current_step.description}
-            with the following input's description:
-            {current_step.inputs}
+            You are tasked with executing step: {current_step.name}
+            Description: {current_step.description}
 
-            and expected output's description:
-            {current_step.outputs}
+            Input requirements: {current_step.inputs}
+            Expected outputs: {current_step.outputs}
 
-            Previous completed steps:
-            {chr(10).join(filtered_context)}
+            Previous completed steps (dependencies) this is where you could get the context you need to call tool if you have any:
+            {chr(10).join(filtered_context) if filtered_context else "No dependencies"}
 
-            Execute this step and provide the result dont modify the result.
-            RETURN RAW RESULT !!!
-            If you failed to use the tool, dont create any information that is not provided in the plan or previous steps.
+            Execute this step and provide the result. Don't modify the result.
+            RETURN RAW RESULT!
+
+            If you have tools available, use them. If not, apply your reasoning to complete the step.
+            If you cannot complete the step with available information, return <FAILED_STEP> and explain why.
         """
 
         try:
-            # Create React agent with dynamically retrieved tools
+            # Create React agent - it will automatically handle tool usage or LLM reasoning
             agent_executor = create_react_agent(
                 self.llm,
-                step_tools,
-                prompt="""
-                    You are a helpful assistant that can use tools to complete tasks.
-                """,
+                step_tools,  # Empty list is fine - agent will use LLM reasoning
+                prompt="""You are a helpful assistant that executes workflow steps.
+
+                    RULES:
+                    1. If tools are available, use them to complete the task
+                    2. If no tools are available, use your knowledge and reasoning
+                    3. Always try to complete the step as requested
+                    4. Return actual results, not explanations of what you would do
+                    5. If you cannot complete the step, return <FAILED_STEP> with detailed explanation about the error
+
+                    Be direct and provide actionable results.""",
             )
 
-            print("-- Executing with tools:")
-            print(step_tools)
+            print(f"   🔧 Executing with {len(step_tools)} tool(s)")
 
             agent_response = agent_executor.invoke(
                 {"messages": [("user", task_formatted)]}
             )
 
             result = agent_response["messages"][-1].content
-            print(f"✅ Step completed: {result}...")
+            print(f"✅ Step completed")
+            print(f"📄 Result: {result}...")
+
+            if "<FAILED_STEP>" in result:
+                print("❌ Step execution failed")
+                return {
+                    "past_steps": [(current_step.name, result)],
+                    "current_step_index": state.current_step_index,  # Don't advance
+                }
 
             return {
                 "past_steps": [(current_step.name, result)],
@@ -322,9 +344,12 @@ class Orchestrator:
             }
 
         except Exception as e:
-            print(f"❌ Step execution failed: {e}")
-            print(f"🧠 Falling back to LLM reasoning...")
-            return self._execute_with_llm_reasoning(current_step, state)
+            print(f"❌ Step execution failed with exception: {e}")
+            error_result = f"<FAILED_STEP>: Exception occurred - {str(e)}"
+            return {
+                "past_steps": [(current_step.name, error_result)],
+                "current_step_index": state.current_step_index,  # Don't advance
+            }
 
     def _execute_with_llm_reasoning(
         self, current_step: TaskStep, state: OrchestratorState
@@ -335,7 +360,10 @@ class Orchestrator:
 
         # Build context from previous steps
         context_str = ""
-        filtered_context = [f"- {result}" if step_name in current_step.dependencies else "" for step_name, result in state.past_steps]
+        filtered_context = [
+            f"- {result}" if step_name in current_step.dependencies else ""
+            for step_name, result in state.past_steps
+        ]
         if state.past_steps:
             context_str = f"""
                 Previous completed steps and their results:
@@ -360,6 +388,8 @@ class Orchestrator:
             Provide a comprehensive response that accomplishes the step objective and moves the workflow forward.
 
             Be specific, actionable, and ensure your response can be used by subsequent workflow steps.
+            If you failed to get the answer, please return <FAILED_STEP> and the reason this step failed.
+            If you are not sure about the answer, please return <FAILED_STEP> and the reason this step failed
         """
 
         try:
@@ -368,19 +398,23 @@ class Orchestrator:
             response = self.llm.invoke([HumanMessage(content=reasoning_prompt)])
             result = response.content
 
-            print(f"✅ LLM reasoning completed: {result[:100]}...")
+            print(f"✅ LLM reasoning completed: {result}...")
+            if result.strip() == "<FAILED_STEP>":
+                print("❌ LLM reasoning failed or was uncertain.")
+                return {
+                    "past_steps": [(current_step.name, f"<FAILED_STEP>: {result}")],
+                    "current_step_index": state.current_step_index,
+                }
 
             return {
-                "past_steps": [(current_step.description, result)],
+                "past_steps": [(current_step.name, result)],
                 "current_step_index": state.current_step_index + 1,
             }
 
         except Exception as e:
             print(f"❌ LLM reasoning failed: {e}")
             return {
-                "past_steps": [
-                    (current_step.description, f"LLM reasoning failed: {str(e)}")
-                ],
+                "past_steps": [(current_step.name, f"<FAILED_STEP>: {str(e)}")],
                 "current_step_index": state.current_step_index,
             }
 
@@ -398,7 +432,11 @@ class Orchestrator:
         if state.past_steps:
             last_result = state.past_steps[-1]
 
-            if "Failed:" in last_result or "No tools available" in last_result:
+            if (
+                "Failed:" in last_result
+                or "No tools available" in last_result
+                or "<FAILED_STEP>" in last_result
+            ):
                 print(f"❌ Last step failed, replanning...")
 
                 # Get the failed step
@@ -482,7 +520,7 @@ class Orchestrator:
 
             # Parse the response
 
-            new_name = response.step_name.stip()
+            new_name = response.step_name.strip()
             new_description = response.step_description.strip()
 
             if new_name and new_description:

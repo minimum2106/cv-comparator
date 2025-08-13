@@ -46,7 +46,11 @@ class ToolRetriever(BaseRetriever):
                 streaming=False,
             )
         if self.vector_store is None:
-            self.vector_store = InMemoryVectorStore(embedding=OpenAIEmbeddings())
+            self.vector_store = InMemoryVectorStore(
+                embedding=OpenAIEmbeddings(
+                    model="text-embedding-3-large",
+                )
+            )
 
     def _get_relevant_documents(
         self, query: str, *, run_manager: CallbackManagerForRetrieverRun
@@ -57,7 +61,7 @@ class ToolRetriever(BaseRetriever):
         enhanced_query = self._generate_enhanced_query(query)
 
         # Search vector store
-        tool_documents = self.vector_store.similarity_search(enhanced_query, k=2)
+        tool_documents = self.vector_store.similarity_search(enhanced_query, k=3)
 
         # Enhance documents with tool metadata
         enhanced_docs = []
@@ -157,6 +161,57 @@ class ToolRetriever(BaseRetriever):
         return results
 
 
+class ReadTxtFileInput(BaseModel):
+    file_path: str = Field(
+        ...,
+        description="Path to the .txt file to read.",
+    )
+
+
+@tool(
+    name_or_callable="read_txt_file",
+    description="Read a file and return its contents with automatic encoding fix for special characters.",
+    args_schema=ReadTxtFileInput,
+)
+def read_txt_file(file_path: str) -> str:
+    """Read a text file with automatic encoding detection and fixing."""
+    try:
+        from agents.utils import TextProcessor
+
+        if not os.path.exists(file_path):
+            return f"Error: File '{file_path}' does not exist."
+
+        if not os.path.isfile(file_path):
+            return f"Error: '{file_path}' is not a file."
+
+        # Read file with error handling for encoding issues
+        try:
+            with open(file_path, "r", encoding="utf-8", errors="replace") as f:
+                content = f.read().strip()
+        except UnicodeDecodeError:
+            # Fallback to latin-1 encoding if UTF-8 fails
+            with open(file_path, "r", encoding="latin-1") as f:
+                content = f.read().strip()
+
+        if not content:
+            return f"File '{file_path}' is empty."
+
+        # Automatically detect and fix encoding issues
+        original_length = len(content)
+        fixed_content = TextProcessor.detect_and_fix_encoding(content)
+
+        # Log if encoding fixes were applied
+        if len(fixed_content) != original_length or "Ã" in content:
+            print(f"🔧 Applied encoding fixes to '{file_path}'")
+            print(
+                f"   Original: {original_length} chars → Fixed: {len(fixed_content)} chars"
+            )
+
+        return fixed_content
+
+    except Exception as e:
+        return f"Error reading file '{file_path}': {str(e)}"
+
 class ReadTxtDirectoryInput(BaseModel):
     directory: str = Field(
         ...,
@@ -166,7 +221,7 @@ class ReadTxtDirectoryInput(BaseModel):
 
 @tool(
     name_or_callable="read_txt_directory",
-    description="Read all txt files in a directory and return their contents with filenames.",
+    description="Gather all txt files in a directory and return their contents with filenames.",
     args_schema=ReadTxtDirectoryInput,
 )
 def read_txt_directory(directory: str) -> str:
@@ -186,11 +241,7 @@ def read_txt_directory(directory: str) -> str:
             if filename.endswith(".txt"):
                 file_path = os.path.join(directory, filename)
                 try:
-                    with open(file_path, "r", encoding="utf-8") as f:
-                        content = f.read().strip()
-                        if content:  # Only include non-empty files
-                            txt_files.append(filename)
-                            file_contents.append(f"{content}")
+                    file_contents.append(read_txt_file(file_path))
                 except Exception as e:
                     file_contents.append(f"Error reading file: {e}")
 
@@ -207,21 +258,6 @@ def read_txt_directory(directory: str) -> str:
         return f"Error accessing directory '{directory}': {str(e)}"
 
 
-class ReadTxtFileInput(BaseModel):
-    file_path: str = Field(
-        ...,
-        description="Path to the .txt file to read.",
-    )
-
-
-@tool(
-    name_or_callable="read_txt_file",
-    description="Extract content from a txt file.",
-    args_schema=ReadTxtFileInput,
-)
-def read_txt_file(file_path: str) -> str:
-    with open(file_path, "r", encoding="utf-8") as f:
-        return f.read().strip()
 
 
 # Initialize and populate ToolRetriever

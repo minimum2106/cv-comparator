@@ -4,118 +4,154 @@ from typing import List, Dict, Any, Type
 import json
 import os
 from pathlib import Path
-
-
-# Scoring configuration constants
-MAX_OCCURRENCES_FOR_FULL_SCORE = 3
-BASE_SCORE_MULTIPLIER = 0.5  # 50% base score for found criteria
-FREQUENCY_BONUS_MULTIPLIER = 0.5  # Additional 50% based on frequency
-NOT_FOUND_SCORE_MULTIPLIER = 0.1  # 10% base score if criterion not found
-PERCENTAGE_MULTIPLIER = 100
+from langchain_openai import ChatOpenAI
+from langchain_core.messages import HumanMessage
 
 
 class ComparatorInput(BaseModel):
-    cv_directory: str = Field(
-        description="Directory path containing CV text files to be compared"
+    cv_data: List[str] = Field(
+        description="CV data in string format, emphasizing the details of each candidate"
     )
-    evaluation_criteria: Dict[str, int] = Field(
-        description="Evaluation criteria with weights (e.g., {'python': 30, 'experience': 25, 'education': 20, 'projects': 25})"
+    evaluation_criteria: Dict[str, str] = Field(
+        description="Evaluation criteria with either 'must have' or 'nice to have' (e.g., {'python': 'must have', 'experience': 'nice to have', 'education': 'must have', 'projects': 'nice to have'})"
+    )
+
+
+class CriteriaAnalysis(BaseModel):
+    """Structured output for criteria analysis"""
+
+    criteria_found: List[str] = Field(
+        description="List of criteria that are present in the CV"
+    )
+    criteria_missing: List[str] = Field(
+        description="List of criteria that are missing from the CV"
+    )
+    analysis_notes: str = Field(
+        description="Brief notes about the candidate's profile and strengths"
     )
 
 
 class ComparatorAgent(BaseTool):
-    """A simple agent for comparing CVs against evaluation criteria."""
 
     name: str = "cv_comparator"
     description: str = (
-        "Compare CVs from directory against evaluation criteria and generate scores"
+        "This agent compares CVs against evaluation criteria with must-have and nice-to-have priorities using LLM analysis"
     )
     args_schema: Type[BaseModel] = ComparatorInput
 
+    def __init__(self):
+        super().__init__()
 
-    def _load_cv_files(self, cv_directory: str) -> List[Dict[str, Any]]:
-        """Load CV text files from directory and extract content"""
-        cv_data = []
+    def _analyze_cv_with_llm(
+        self, cv_content: str, criteria_list: List[str], candidate_name: str
+    ) -> CriteriaAnalysis:
+        """Use LLM to analyze CV against criteria"""
+
+        criteria_text = "\n".join([f"- {criterion}" for criterion in criteria_list])
+
+        analysis_prompt = f"""
+        Analyze the following CV against the specified criteria and determine which criteria the candidate meets.
+        
+        CANDIDATE: {candidate_name}
+        
+        CV CONTENT:
+        {cv_content}
+        
+        CRITERIA TO EVALUATE:
+        {criteria_text}
+        
+        INSTRUCTIONS:
+        1. First, translate the CV content to English if it is in another language.
+        2. Identify which criteria from the list are present in the CV.
+        3. Carefully analyze the CV content for evidence of each criterion
+        4. Consider both explicit mentions and implicit evidence (e.g., job titles, projects, experience descriptions)
+        5. Be thorough but not overly strict - look for reasonable evidence
+        6. For technical skills, look for mentions in skills sections, job descriptions, or project descriptions
+        7. For experience/education, look at work history and educational background
+        8. For soft skills, look at leadership roles, team descriptions, achievements
+
+        EXAMPLES OF EVIDENCE:
+        - "Python": Mentioned in skills, used in projects, or mentioned in job descriptions
+        - "Leadership": Team lead roles, managed teams, led projects, mentoring experience
+        - "Experience": Years of work experience, relevant job positions
+        - "AWS": Cloud experience, specific AWS services mentioned, cloud projects
+        - "Education": Degrees, certifications, relevant coursework
+        
+        Return only the criteria that have clear evidence in the CV. Do not include criteria if the evidence is weak or unclear.
+        """
 
         try:
-            directory_path = Path(cv_directory)
+            # Use structured output to get analysis
+            # llm = ChatOpenAI(
+            #     model="gpt-4o",
+            #     temperature=0.0,
+            #     streaming=False,
+            # )
 
-            if not directory_path.exists():
-                raise FileNotFoundError(f"Directory not found: {cv_directory}")
+            from langchain_groq import ChatGroq
 
-            if not directory_path.is_dir():
-                raise ValueError(f"Path is not a directory: {cv_directory}")
+            llm = ChatGroq(model="llama-3.3-70b-versatile", temperature=0.0, streaming=False)
 
-            # Find all text files in the directory
-            txt_files = list(directory_path.glob("*.txt"))
+            structured_llm = llm.with_structured_output(CriteriaAnalysis)
+            response = structured_llm.invoke([HumanMessage(content=analysis_prompt)])
 
-            if not txt_files:
-                raise ValueError(f"No .txt files found in directory: {cv_directory}")
-
-            print(f"📁 Found {len(txt_files)} CV files in directory")
-
-            for txt_file in txt_files:
-                try:
-                    # Read file content
-                    with open(txt_file, "r", encoding="utf-8") as file:
-                        content = file.read().strip()
-
-                    if content:
-                        cv_info = {
-                            "filename": txt_file.name,
-                            "name": txt_file.stem,  # Use filename without extension as candidate name
-                            "content": content,
-                            "file_path": str(txt_file),
-                        }
-                        cv_data.append(cv_info)
-                        print(f"   ✅ Loaded: {txt_file.name}")
-                    else:
-                        print(f"   ⚠️ Empty file: {txt_file.name}")
-
-                except Exception as e:
-                    print(f"   ❌ Error reading {txt_file.name}: {e}")
-                    continue
-
-            if not cv_data:
-                raise ValueError(
-                    "No valid CV content could be loaded from the directory"
-                )
-
-            return cv_data
+            return response
 
         except Exception as e:
-            print(f"❌ Error loading CV files: {e}")
-            raise
+            print(f"❌ LLM analysis failed for {candidate_name}: {e}")
+            # Fallback to simple keyword matching
+            criteria_found = []
+            criteria_missing = []
 
-    def _calculate_criterion_score(
-        self, cv_text: str, criterion: str, weight: int
+            cv_lower = cv_content.lower()
+            for criterion in criteria_list:
+                if criterion.lower() in cv_lower:
+                    criteria_found.append(criterion)
+                else:
+                    criteria_missing.append(criterion)
+
+            return CriteriaAnalysis(
+                criteria_found=criteria_found,
+                criteria_missing=criteria_missing,
+                analysis_notes=f"Fallback analysis for {candidate_name} (LLM unavailable)",
+            )
+
+    def _calculate_max_possible_score(
+        self, evaluation_criteria: Dict[str, str]
     ) -> float:
-        """Calculate score for a single criterion based on occurrences in CV text"""
-        criterion_lower = criterion.lower()
-        occurrences = cv_text.count(criterion_lower)
+        """Calculate maximum possible score: len(must_have) + len(nice_to_have) * 0.5"""
+        must_have_count = sum(
+            1
+            for priority in evaluation_criteria.values()
+            if priority.lower() == "must have"
+        )
+        nice_to_have_count = sum(
+            1
+            for priority in evaluation_criteria.values()
+            if priority.lower() == "nice to have"
+        )
 
-        if occurrences > 0:
-            # Score based on frequency (max 100% for MAX_OCCURRENCES_FOR_FULL_SCORE+ occurrences)
-            frequency_multiplier = min(
-                occurrences / MAX_OCCURRENCES_FOR_FULL_SCORE, 1.0
-            )
-            criterion_score = weight * (
-                BASE_SCORE_MULTIPLIER
-                + FREQUENCY_BONUS_MULTIPLIER * frequency_multiplier
-            )
-        else:
-            # Base score if criterion not found
-            criterion_score = weight * NOT_FOUND_SCORE_MULTIPLIER
+        return must_have_count + (nice_to_have_count * 0.5)
 
-        return criterion_score
-
-    def _run(self, cv_directory: str, evaluation_criteria: Dict[str, int]) -> str:
+    def _run(self, cv_data: List[str], evaluation_criteria: Dict[str, str]) -> str:
         """
-        Load CVs from directory and apply evaluation grid to generate comparison results
+        Load CVs from directory and apply LLM-based criteria analysis
         """
 
-        # Load CV files from directory
-        cv_data = self._load_cv_files(cv_directory)
+        # Separate criteria by priority
+        must_have_criteria = [
+            k for k, v in evaluation_criteria.items() if v.lower() == "must have"
+        ]
+        nice_to_have_criteria = [
+            k for k, v in evaluation_criteria.items() if v.lower() == "nice to have"
+        ]
+        all_criteria = list(evaluation_criteria.keys())
+
+        # Calculate maximum possible score
+        max_possible_score = len(must_have_criteria) + (
+            len(nice_to_have_criteria) * 0.5
+        )
+        print(f"   📈 Maximum Possible Score: {max_possible_score}")
 
         results = []
 
@@ -123,50 +159,71 @@ class ComparatorAgent(BaseTool):
             candidate_name = cv.get("name", f"Candidate_{i+1}")
             cv_content = cv.get("content", "")
 
-            print(f"🔍 Evaluating: {candidate_name}")
+            print(f"🔍 Analyzing: {candidate_name} with LLM...")
 
-            # Calculate score for each criterion
-            scores = {}
-            total_score = 0
+            # Use LLM to analyze CV against criteria
+            analysis = self._analyze_cv_with_llm(
+                cv_content, all_criteria, candidate_name
+            )
 
-            cv_text = cv_content.lower()
+            # Calculate scores based on LLM analysis
+            raw_score = 0
+            criterion_results = {}
 
-            for criterion, weight in evaluation_criteria.items():
-                criterion_score = self._calculate_criterion_score(
-                    cv_text, criterion, weight
-                )
-                scores[criterion] = round(criterion_score, 2)
-                total_score += criterion_score
+            # Check must-have criteria (+1 point each)
+            for criterion in must_have_criteria:
+                if criterion in analysis.criteria_found:
+                    raw_score += 1
+
+            # Check nice-to-have criteria (+0.5 points each)
+            for criterion in nice_to_have_criteria:
+                if criterion in analysis.criteria_found:
+                    raw_score += 0.5
 
             # Calculate percentage score
-            max_possible_score = sum(evaluation_criteria.values())
-            percentage = round(
-                (total_score / max_possible_score) * PERCENTAGE_MULTIPLIER, 2
+            percentage = (
+                round((raw_score / max_possible_score) * 100, 2)
+                if max_possible_score > 0
+                else 0
             )
 
             # Create candidate result
             candidate_result = {
                 "name": candidate_name,
                 "filename": cv.get("filename"),
-                "scores": scores,
-                "total_score": round(total_score, 2),
+                "raw_score": raw_score,
+                "max_possible_score": max_possible_score,
                 "percentage": percentage,
+                "criterion_results": criterion_results,
+                "llm_analysis": {
+                    "criteria_found": analysis.criteria_found,
+                    "criteria_missing": analysis.criteria_missing,
+                    "analysis_notes": analysis.analysis_notes,
+                },
             }
 
             results.append(candidate_result)
 
-        # Sort by total score (highest first)
-        results.sort(key=lambda x: x["total_score"], reverse=True)
+        # Sort by raw score (highest first)
+        results.sort(key=lambda x: (x["raw_score"]), reverse=True)
 
         # Generate comparison table
         comparison_table = self._generate_comparison_table(results, evaluation_criteria)
 
-        print(f"🏆 Ranking completed for {len(results)} candidates")
-
         return json.dumps(
             {
-                "directory": cv_directory,
                 "total_candidates": len(results),
+                "analysis_method": "LLM-based",
+                "scoring_system": {
+                    "must_have_points": 1.0,
+                    "nice_to_have_points": 0.5,
+                    "max_possible_score": max_possible_score,
+                    "formula": "score = (must_have_count * 1.0) + (nice_to_have_count * 0.5)",
+                },
+                "evaluation_summary": {
+                    "must_have_criteria": must_have_criteria,
+                    "nice_to_have_criteria": nice_to_have_criteria,
+                },
                 "ranked_candidates": results,
                 "comparison_table": comparison_table,
             },
@@ -174,45 +231,94 @@ class ComparatorAgent(BaseTool):
         )
 
     def _generate_comparison_table(
-        self, results: List[Dict], criteria: Dict[str, int]
+        self, results: List[Dict], criteria: Dict[str, str]
     ) -> str:
-        """Generate a markdown comparison table"""
+        """Generate a simplified markdown comparison table"""
 
-        # Table formatting constants
-        DECIMAL_PLACES = 1
+        # Separate criteria by priority for header
+        must_have_criteria = [
+            k for k, v in criteria.items() if v.lower() == "must have"
+        ]
+        nice_to_have_criteria = [
+            k for k, v in criteria.items() if v.lower() == "nice to have"
+        ]
 
         # Table header
         header = "| Rank | Candidate | Filename | "
-        header += " | ".join(criteria.keys()) + " | Total Score | Percentage |\n"
 
-        separator = "|------|-----------|----------|"
-        separator += (
-            "|".join(["----------"] * len(criteria)) + "|------------|------------|\n"
-        )
+        # Add must-have columns
+        for criterion in must_have_criteria:
+            header += f"{criterion} (Must) | "
+
+        # Add nice-to-have columns
+        for criterion in nice_to_have_criteria:
+            header += f"{criterion} (Nice) | "
+
+        header += "Raw Score | Max Score | Percentage | LLM Notes |\n"
+
+        # Separator
+        total_columns = (
+            3 + len(criteria) + 4
+        )  # Rank, Candidate, Filename + criteria + scores + notes
+        separator = "|" + "|".join(["------"] * total_columns) + "|\n"
 
         # Table rows
         rows = []
         for rank, candidate in enumerate(results, 1):
             row = f"| {rank} | {candidate['name']} | {candidate.get('filename', 'N/A')} | "
 
-            # Add scores for each criterion
-            criterion_scores = []
-            for criterion in criteria.keys():
-                score = candidate["scores"].get(criterion, 0)
-                criterion_scores.append(f"{score:.{DECIMAL_PLACES}f}")
+            # Add must-have results
+            for criterion in must_have_criteria:
+                result = candidate["criterion_results"].get(
+                    f"{criterion} (Must)", "❌ Missing"
+                )
+                status = "✅" if "Found" in result else "❌"
+                row += f"{status} | "
 
-            row += " | ".join(criterion_scores)
-            row += (
-                f" | {candidate['total_score']:.{DECIMAL_PLACES}f} | "
-                f"{candidate['percentage']:.{DECIMAL_PLACES}f}% |"
-            )
+            # Add nice-to-have results
+            for criterion in nice_to_have_criteria:
+                result = candidate["criterion_results"].get(
+                    f"{criterion} (Nice)", "❌ Missing"
+                )
+                status = "✅" if "Found" in result else "❌"
+                row += f"{status} | "
+
+            # Add summary scores
+            row += f"{candidate['raw_score']} | "
+            row += f"{candidate['max_possible_score']} | "
+            row += f"{candidate['percentage']}% | "
+
+            # Add LLM analysis notes (truncated)
+            notes = candidate.get("llm_analysis", {}).get("analysis_notes", "No notes")
+            truncated_notes = notes[:50] + "..." if len(notes) > 50 else notes
+            row += f"{truncated_notes} |"
+
             rows.append(row)
 
         return header + separator + "\n".join(rows)
+    
+    def _load_cv_data(self, cv_directory: str) -> List[Dict[str, Any]]:
+        """Load CV data from the specified directory"""
+        cv_data = []
+        if not os.path.exists(cv_directory):
+            raise ValueError(f"CV directory '{cv_directory}' does not exist")
+
+        for filename in os.listdir(cv_directory):
+            if filename.endswith(".txt"):
+                file_path = Path(cv_directory) / filename
+                try:
+                    with open(file_path, "r", encoding="utf-8") as f:
+                        content = f.read().strip()
+                        if content:  # Only include non-empty files
+                            cv_data.append({"name": filename, "content": content, "filename": filename})
+                except Exception as e:
+                    print(f"Error reading {filename}: {e}")
+
+        return cv_data
 
     def run(self, input_data: Dict[str, Any]) -> str:
         """Run the comparator with input data"""
         return self._run(
-            cv_directory=input_data.get("cv_directory", ""),
+            cv_data=input_data.get("cv_data", []),
             evaluation_criteria=input_data.get("evaluation_criteria", {}),
         )
