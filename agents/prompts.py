@@ -28,55 +28,104 @@ Before creating the plan, analyze the query thoroughly:
 4. **Resource Optimization**: Balance thoroughness with efficiency
 5. **Clear Boundaries**: Define precise scope for each step to prevent overlap
 
-# STEP DESIGN GUIDELINES:
-For each step in your plan:
-- **Purpose**: What specific objective does this step accomplish?
-- **Inputs**: What data, files, or information is required?
-- **Process**: What actions or analysis will be performed?
-- **Outputs**: What deliverables or data will be produced?
-- **Dependencies**: Which other steps must complete before this one?
-- **Success Criteria**: How to determine if the step completed successfully?
+# OUTPUT FORMAT:
+Generate a plan using the following format for each step:
 
-# OUTPUT FORMAT REQUIREMENTS:
-Structure your response with these exact XML tags:
-
-```xml
-<plan>
-<step>
-<name>descriptive_step_name_in_snake_case</name>
-<description>Clear, actionable description of what this step accomplishes and how it contributes to the overall objective</description>
-</step>
-<step>
-<name>next_step_name</name>
-<description>Next step description with specific actions and expected outcomes</description>
-</step>
-</plan>
-```
+### Step X: step_name_in_snake_case
+- **Input**: Specify the input data or resources required for this step. 
+If the input has been provided by the result of the previous step, reference it clearly.
+- **Output**: What deliverables or data will be produced
+- **Description**: Clear explanation of what this step accomplishes and how it contributes to the overall objective
+- **Dependencies**: List any dependencies on previous steps (could be more than one or empty) and it should be separated by commas
 
 # STEP NAMING CONVENTIONS:
 - Use descriptive snake_case names that clearly indicate the action
-- Examples: `collect_cv_files`, `extract_candidate_skills`, `generate_comparison_report`
+- Examples: `extract_brief_requirements`, `collect_cv_files`, `parse_cv_content`, `generate_comparison_report`
 - Avoid generic names like `step_1`, `process_data`, `analyze_results`
 
 # EXAMPLE PLANS:
 
-**For Comparison Tasks:**
-- Define Criteria → Collect Data And Compare With Criteria → Report
+**For Document Analysis Tasks:**
 
-**For Document Analysis:**
-- Gather Documents → Parse Content → Extract Information → Analyze → Synthesize
+### Step 1: gather_documents
+- **Input**: Document sources or directory paths
+- **Output**: Collection of document files
+- **Description**: Collect all relevant documents from specified sources
+- **Dependencies**: None
+
+### Step 2: parse_content
+- **Input**: Document files from gather_documents
+- **Output**: Extracted text content from documents
+- **Description**: Extract and clean text content from various document formats
+- **Dependencies**: gather_documents
+
+### Step 3: extract_information
+- **Input**: Parsed document content from parse_content
+- **Output**: Structured data points and key information
+- **Description**: Identify and extract key information and data points from the content
+- **Dependencies**: parse_content
+
+### Step 4: analyze_patterns
+- **Input**: Structured information
+- **Output**: Analysis results and insights
+- **Description**: Perform analytical processing to identify patterns and insights
+- **Dependencies**: extract_information
+
+### Step 5: synthesize_findings
+- **Input**: Analysis results
+- **Output**: Comprehensive summary and conclusions
+- **Description**: Combine insights into a coherent summary with actionable conclusions
+- **Dependencies**: analyze_patterns
 
 **For Research Tasks:**
-- Define Scope → Gather Sources → Extract Information → Analyze → Synthesize → Report
+
+### Step 1: define_research_scope
+- **Input**: Research query or objectives
+- **Output**: Defined research scope and questions
+- **Description**: Clearly outline the research objectives, questions, and success criteria
+- **Dependencies**: None
+
+### Step 2: gather_sources
+- **Input**: Research scope and search parameters
+- **Output**: Collection of relevant sources and literature
+- **Description**: Collect relevant literature, data sources, and reference materials
+- **Dependencies**: define_research_scope
+
+### Step 3: extract_key_information
+- **Input**: Source materials
+- **Output**: Key facts, data points, and insights
+- **Description**: Extract relevant information and data points from gathered sources
+- **Dependencies**: gather_sources
+
+### Step 4: analyze_findings
+- **Input**: Extracted information
+- **Output**: Analyzed data with patterns and correlations
+- **Description**: Perform in-depth analysis to identify patterns, trends, and relationships
+- **Dependencies**: extract_key_information
+
+### Step 5: synthesize_insights
+- **Input**: Analysis results 
+- **Output**: Integrated insights and conclusions
+- **Description**: Combine findings into coherent insights and actionable conclusions
+- **Dependencies**: analyze_findings
+
+### Step 6: generate_research_report
+- **Input**: Synthesized insights
+- **Output**: Comprehensive research report
+- **Description**: Present findings in a clear, well-structured research report
+- **Dependencies**: synthesize_insights
 
 # QUALITY STANDARDS:
+- Each plan should have 4 to 5 steps, ensuring a balance between thoroughness and efficiency
+- Avoid to short plans that lack depth or detail
 - Each step must be actionable by an automated system
-- Clear data flow between steps (outputs become inputs)
+- Clear input-output flow between sequential steps
 - Include validation and quality checks where appropriate
-- Consider error handling and alternative paths
 - Ensure the plan fully addresses the user's original query
 - Steps should be specific enough to be executed by specialized tools or agents
 - Maintain logical sequence and dependencies between steps
+- Focus on practical execution rather than theoretical analysis
 
 Generate a comprehensive plan that, when executed, will fully accomplish the user's objective with maximum efficiency and reliability.
+Use the markdown format shown in the examples above. Do not include any additional text outside the step structure.
 """
