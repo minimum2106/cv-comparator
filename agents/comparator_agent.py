@@ -1,11 +1,28 @@
-from langchain_core.tools import BaseTool
-from pydantic import BaseModel, Field
 from typing import List, Dict, Any, Type
+from pathlib import Path
+import tomllib
 import json
 import os
-from pathlib import Path
+
+from langchain_core.tools import BaseTool
 from langchain_openai import ChatOpenAI
+from langchain_groq import ChatGroq
 from langchain_core.messages import HumanMessage
+from pydantic import BaseModel, Field
+
+
+with open("project.toml", "rb") as f:
+    config = tomllib.load(f)
+    provider = config.get("project", {}).get("models").get("provider")
+
+    if provider == "openai":
+        model = config.get("project", {}).get("models").get("openai_default")
+        LLM = ChatOpenAI(model=model, temperature=0.0, streaming=False)
+    elif provider == "groq":
+        model = config.get("project", {}).get("models").get("groq_default")
+        LLM = ChatGroq(model=model, temperature=0.0, streaming=False)
+    else:
+        raise ValueError("Unsupported model provider")
 
 
 class ComparatorInput(BaseModel):
@@ -81,18 +98,7 @@ class ComparatorAgent(BaseTool):
         """
 
         try:
-            # Use structured output to get analysis
-            # llm = ChatOpenAI(
-            #     model="gpt-4o",
-            #     temperature=0.0,
-            #     streaming=False,
-            # )
-
-            from langchain_groq import ChatGroq
-
-            llm = ChatGroq(model="llama-3.3-70b-versatile", temperature=0.0, streaming=False)
-
-            structured_llm = llm.with_structured_output(CriteriaAnalysis)
+            structured_llm = LLM.with_structured_output(CriteriaAnalysis)
             response = structured_llm.invoke([HumanMessage(content=analysis_prompt)])
 
             return response
@@ -296,7 +302,7 @@ class ComparatorAgent(BaseTool):
             rows.append(row)
 
         return header + separator + "\n".join(rows)
-    
+
     def _load_cv_data(self, cv_directory: str) -> List[Dict[str, Any]]:
         """Load CV data from the specified directory"""
         cv_data = []
@@ -310,7 +316,13 @@ class ComparatorAgent(BaseTool):
                     with open(file_path, "r", encoding="utf-8") as f:
                         content = f.read().strip()
                         if content:  # Only include non-empty files
-                            cv_data.append({"name": filename, "content": content, "filename": filename})
+                            cv_data.append(
+                                {
+                                    "name": filename,
+                                    "content": content,
+                                    "filename": filename,
+                                }
+                            )
                 except Exception as e:
                     print(f"Error reading {filename}: {e}")
 

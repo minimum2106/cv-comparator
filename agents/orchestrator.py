@@ -15,6 +15,10 @@ from pydantic import BaseModel, Field
 from agents.prompts import GENERATE_PLAN_SYSTEM_PROMPT
 from agents.tool_retriever import tool_retriever
 
+with open("project.toml", "rb") as f:
+    config = tomllib.load(f)
+    print(config.get("project", {}).get("models").get("provider"))
+
 
 class TaskStep(BaseModel):
     step_id: str = Field(description="Unique identifier for the step")
@@ -52,15 +56,18 @@ class OrchestratorState(BaseModel):
 class Orchestrator:
     def __init__(self):
         self.agent_database = {}
-        # self.llm = ChatOpenAI(
-        #     model="gpt-4o",
-        #     temperature=0.0,
-        #     streaming=False,
-        # )
+        with open("project.toml", "rb") as f:
+            config = tomllib.load(f)
+            provider = config.get("project", {}).get("models").get("provider")
 
-        self.llm = ChatGroq(
-            model="llama-3.3-70b-versatile", temperature=0.0, streaming=False
-        )
+            if provider == "openai":
+                model = config.get("project", {}).get("models").get("openai_default")
+                self.llm = ChatOpenAI(model=model, temperature=0.0, streaming=False)
+            elif provider == "groq":
+                model = config.get("project", {}).get("models").get("groq_default")
+                self.llm = ChatGroq(model=model, temperature=0.0, streaming=False)
+            else:
+                raise ValueError("Unsupported model provider")
 
     def run(self, user_query: str):
         """Main execution method"""

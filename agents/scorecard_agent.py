@@ -1,10 +1,26 @@
+import tomllib
+import json
+
 from langchain_core.tools import BaseTool
-from pydantic import BaseModel, Field
 from typing import List, Type, Dict, Any
 from langchain_groq import ChatGroq
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage
-import json
+from pydantic import BaseModel, Field
+
+
+with open("project.toml", "rb") as f:
+    config = tomllib.load(f)
+    provider = config.get("project", {}).get("models").get("provider")
+
+    if provider == "openai":
+        model = config.get("project", {}).get("models").get("openai_default")
+        LLM = ChatOpenAI(model=model, temperature=0.0, streaming=False)
+    elif provider == "groq":
+        model = config.get("project", {}).get("models").get("groq_default")
+        LLM = ChatGroq(model=model, temperature=0.0, streaming=False)
+    else:
+        raise ValueError("Unsupported model provider")
 
 
 class ScorecardInput(BaseModel):
@@ -65,17 +81,7 @@ class ScorecardAgent(BaseTool):
         """
 
         try:
-            # Use structured output to get criteria
-            # llm = ChatOpenAI(
-            #     model="gpt-4o",
-            #     temperature=0.0,
-            #     streaming=False,
-            # )
-
-            llm = ChatGroq(model="llama-3.3-70b-versatile", temperature=0.0, streaming=False)
-
-
-            structured_llm = llm.with_structured_output(CriteriaExtraction)
+            structured_llm = LLM.with_structured_output(CriteriaExtraction)
             response = structured_llm.invoke([HumanMessage(content=extraction_prompt)])
 
             print(

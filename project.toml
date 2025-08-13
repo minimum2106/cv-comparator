@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cv-comparator"
+version = "0.1.0"
+description = "AI-powered CV comparison and analysis tool with orchestrated workflows"
+authors = [
+    {name = "Quan Hong TRAN", email = "tranhongquan2106@gmail.com"}
+]
+readme = "README.md"
+requires-python = ">=3.9"
+
+[project.models]
+provider = "groq"
+groq_default = "llama-3.3-70b-versatile"
+openai_default = "gpt-4o"
+
