@@ -372,11 +372,7 @@ class Orchestrator:
         if state.past_steps:
             last_result = state.past_steps[-1]
 
-            if (
-                "Failed:" in last_result
-                or "No tools available" in last_result
-                or "<FAILED_STEP>" in last_result
-            ):
+            if "<FAILED_STEP>" in last_result[1]:
                 print(f"❌ Last step failed, replanning...")
 
                 # Get the failed step
@@ -400,9 +396,7 @@ class Orchestrator:
                     return {
                         "steps": new_steps,
                         "current_step_index": failed_step_index,  # Reset to retry failed step
-                        "past_steps": state.past_steps[
-                            :-1
-                        ],  # Remove the failed attempt
+                        "past_steps": state.past_steps[:-1],  # Remove the failed attempt
                     }
                 else:
                     print(f"⚠️ Could not replan step, continuing...")
