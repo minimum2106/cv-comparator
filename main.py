@@ -17,7 +17,7 @@ def main():
 
     PROCESSING REQUIREMENTS:
     1. Extract content from brief2.txt as the job brief content
-    2. Categorize criteria into "must have" and "nice to have" requirements
+    2. Analyze criteria into "must have" and "nice to have" requirements
     3. Analyze each CV from the ./cvs directory against these criteria
     4. Score candidates based on how well they match the requirements
     5. Rank candidates from highest to lowest scores
