@@ -250,6 +250,7 @@ class Orchestrator:
         return {"steps": tasks}
 
     def _execute_current_step(self, state: OrchestratorState):
+        print("=================== EXECUTING CURRENT STEP ===================")
         """Execute the current step using React agent with dynamic tool assignment"""
 
         if not state.steps:
@@ -358,72 +359,6 @@ class Orchestrator:
                 "current_step_index": state.current_step_index,  # Don't advance
             }
 
-    def _execute_with_llm_reasoning(
-        self, current_step: TaskStep, state: OrchestratorState
-    ):
-        """Execute step using LLM reasoning when no tools are available"""
-
-        print(f"🧠 No tools available - using LLM reasoning for: {current_step.name}")
-
-        # Build context from previous steps
-        context_str = ""
-        filtered_context = [
-            f"- {result}" if step_name in current_step.dependencies else ""
-            for step_name, result in state.past_steps
-        ]
-        if state.past_steps:
-            context_str = f"""
-                Previous completed steps and their results:
-                {chr(10).join(filtered_context)}
-            """
-
-        # Create reasoning prompt
-        reasoning_prompt = f"""
-            You are an expert assistant tasked with completing a workflow step using only your knowledge and reasoning abilities.
-
-            ORIGINAL USER QUERY: {state.user_query}
-
-            CURRENT STEP TO COMPLETE:
-            Step Name: {current_step.name}
-            Step Description: {current_step.description}
-
-            WORKFLOW CONTEXT:
-            {context_str}
-
-            TASK:
-            Since no specialized tools are available for this step, please complete it using your knowledge and reasoning.
-            Provide a comprehensive response that accomplishes the step objective and moves the workflow forward.
-
-            Be specific, actionable, and ensure your response can be used by subsequent workflow steps.
-            If you failed to get the answer, please return <FAILED_STEP> and the reason this step failed.
-            If you are not sure about the answer, please return <FAILED_STEP> and the reason this step failed
-        """
-
-        try:
-            print(f"   🤔 Applying LLM reasoning...")
-
-            response = self.llm.invoke([HumanMessage(content=reasoning_prompt)])
-            result = response.content
-
-            print(f"✅ LLM reasoning completed: {result}...")
-            if result.strip() == "<FAILED_STEP>":
-                print("❌ LLM reasoning failed or was uncertain.")
-                return {
-                    "past_steps": [(current_step.name, f"<FAILED_STEP>: {result}")],
-                    "current_step_index": state.current_step_index,
-                }
-
-            return {
-                "past_steps": [(current_step.name, result)],
-                "current_step_index": state.current_step_index + 1,
-            }
-
-        except Exception as e:
-            print(f"❌ LLM reasoning failed: {e}")
-            return {
-                "past_steps": [(current_step.name, f"<FAILED_STEP>: {str(e)}")],
-                "current_step_index": state.current_step_index,
-            }
 
     def _replan_execution(self, state: OrchestratorState):
         """Replan the current step if it failed, or continue if successful"""
