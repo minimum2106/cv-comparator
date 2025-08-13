@@ -1,4 +1,5 @@
 from typing import List, Union, Annotated, Dict
+from dotenv import load_dotenv
 import tomllib
 import operator
 import uuid
@@ -15,10 +16,7 @@ from pydantic import BaseModel, Field
 from agents.prompts import GENERATE_PLAN_SYSTEM_PROMPT
 from agents.tool_retriever import tool_retriever
 
-with open("project.toml", "rb") as f:
-    config = tomllib.load(f)
-    print(config.get("project", {}).get("models").get("provider"))
-
+load_dotenv()
 
 class TaskStep(BaseModel):
     step_id: str = Field(description="Unique identifier for the step")

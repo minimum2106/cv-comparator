@@ -1,4 +1,5 @@
 from typing import List, Dict, Any, Type
+from dotenv import load_dotenv
 from pathlib import Path
 import tomllib
 import json
@@ -10,6 +11,7 @@ from langchain_groq import ChatGroq
 from langchain_core.messages import HumanMessage
 from pydantic import BaseModel, Field
 
+load_dotenv()
 
 with open("project.toml", "rb") as f:
     config = tomllib.load(f)
