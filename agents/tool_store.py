@@ -57,7 +57,7 @@ class ToolRetriever(BaseRetriever):
         enhanced_query = self._generate_enhanced_query(query)
 
         # Search vector store
-        tool_documents = self.vector_store.similarity_search(enhanced_query, k=5)
+        tool_documents = self.vector_store.similarity_search(enhanced_query, k=1)
 
         # Enhance documents with tool metadata
         enhanced_docs = []
@@ -157,96 +157,6 @@ class ToolRetriever(BaseRetriever):
         return results
 
 
-# Tool functions (same as before)
-def cv_file_reader(file_path: str) -> str:
-    """Read CV files in various formats (PDF, DOCX, TXT)"""
-    try:
-        # Simplified implementation (would use real parsers in production)
-        return f"Successfully read CV from {file_path}"
-    except Exception as e:
-        return f"Error reading file: {str(e)}"
-
-
-def skill_extractor(
-    cv_text: str, skill_categories: str = "technical,soft,languages"
-) -> str:
-    """Extract skills from CV text and categorize them"""
-    # Simplified implementation
-    skills = {
-        "technical": ["Python", "SQL", "AWS"],
-        "soft": ["Communication", "Leadership"],
-        "languages": ["English", "French"],
-    }
-    return json.dumps(skills)
-
-
-def cv_comparison(cv_list: list, job_requirements: str) -> str:
-    """Compare multiple CVs against job requirements and rank candidates"""
-    # Simplified implementation
-    rankings = [
-        {
-            "name": "Candidate 1",
-            "match_score": 0.85,
-            "strengths": ["Strong technical skills"],
-        },
-        {"name": "Candidate 2", "match_score": 0.72, "strengths": ["Good culture fit"]},
-    ]
-    return json.dumps({"rankings": rankings, "total_compared": len(cv_list)})
-
-
-def report_generator(comparison_data: dict, format_type: str = "markdown") -> str:
-    """Generate professional reports from CV comparison data"""
-    # Simplified implementation
-    return """
-    # CV Comparison Report
-    
-    ## Top Candidates
-    1. Candidate 1 (85% match)
-    2. Candidate 2 (72% match)
-    
-    ## Analysis
-    The candidates have been ranked based on their match to the job requirements.
-    """
-
-
-def email_sender(recipient: str, subject: str, body: str) -> str:
-    """Send email with CV analysis results"""
-    # Simplified implementation
-    return f"Email sent to {recipient} with subject '{subject}'"
-
-
-# Create StructuredTools (same as before)
-cv_reader_tool = StructuredTool.from_function(
-    func=cv_file_reader,
-    name="cv_file_reader",
-    description="Reads CV files in various formats (PDF, DOCX, TXT) and extracts their text content for analysis",
-)
-
-skill_extractor_tool = StructuredTool.from_function(
-    func=skill_extractor,
-    name="skill_extractor",
-    description="Analyzes CV text to extract and categorize skills like programming languages, soft skills, and languages",
-)
-
-cv_comparison_tool = StructuredTool.from_function(
-    func=cv_comparison,
-    name="cv_comparison",
-    description="Compares multiple candidate CVs against job requirements and produces rankings with match scores",
-)
-
-report_tool = StructuredTool.from_function(
-    func=report_generator,
-    name="report_generator",
-    description="Creates professional client-ready reports from CV comparison data in various formats",
-)
-
-email_tool = StructuredTool.from_function(
-    func=email_sender,
-    name="email_sender",
-    description="Sends email notifications with CV analysis results and reports to clients or hiring managers",
-)
-
-
 # Initialize and populate ToolRetriever
 def setup_tool_retriever() -> ToolRetriever:
     """Setup and populate the ToolRRetriever."""
@@ -254,11 +164,6 @@ def setup_tool_retriever() -> ToolRetriever:
 
     # Add tools
     tools = [
-        cv_reader_tool,
-        skill_extractor_tool,
-        cv_comparison_tool,
-        report_tool,
-        email_tool,
         WriterAgent(),
         ComparatorAgent(),
         ScorecardAgent(),
