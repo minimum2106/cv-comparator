@@ -2,13 +2,14 @@ from langchain_core.tools import BaseTool
 from pydantic import BaseModel, Field
 from typing import List, Type, Dict, Any
 from langchain_groq import ChatGroq
+from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage
 import json
 
 
 class ScorecardInput(BaseModel):
     job_brief: str = Field(
-        description="HR job brief describing the position requirements"
+        description="HR job brief content to extract job brief from"
     )
 
 
@@ -59,16 +60,23 @@ class ScorecardAgent(BaseTool):
         - "Team leadership skills"
         - "Agile methodology experience"
         
-        Extract 5-8 must-have criteria and 3-6 nice-to-have criteria.
+        Return only must-have and nice-to-have criteria in the following structured format:
+        ```json
+        {{
+            "must_have": ["Criterion 1", "Criterion 2", ...],
+            "nice_to_have": ["Criterion A", "Criterion B", ...]
+        }}
+
         """
 
         try:
             # Use structured output to get criteria
-            llm = ChatGroq(
-                model="meta-llama/llama-4-scout-17b-16e-instruct",
+            llm = ChatOpenAI(
+                model="gpt-4o",
                 temperature=0.0,
                 streaming=False,
             )
+
 
             structured_llm = llm.with_structured_output(CriteriaExtraction)
             response = structured_llm.invoke([HumanMessage(content=extraction_prompt)])
@@ -97,53 +105,17 @@ class ScorecardAgent(BaseTool):
                 ],
             )
 
-    def _extract_position_title_with_llm(self, job_brief: str) -> str:
-        """Use LLM to extract position title from job brief"""
-
-        title_prompt = f"""
-        Extract the job position title from the following job brief.
-        
-        JOB BRIEF:
-        {job_brief}
-        
-        INSTRUCTIONS:
-        - Return only the job title/position name
-        - Make it concise and professional
-        - If no explicit title is mentioned, infer it from the job description
-        - Examples: "Senior Software Engineer", "Product Manager", "Data Analyst"
-        
-        Position Title:
-        """
-
-        try:
-            response = self.llm.invoke([HumanMessage(content=title_prompt)])
-            title = response.content.strip().strip("\"'")
-
-            if title and len(title) < 100:  # Reasonable title length
-                return title
-            else:
-                return "Position Not Specified"
-
-        except Exception as e:
-            print(f"❌ Title extraction failed: {e}")
-            return "Position Not Specified"
-
     def _run(self, job_brief: str) -> str:
         """
         Create evaluation scorecard from job brief using LLM
         """
         print(f"🧠 Using LLM to analyze job brief...")
 
-        # Extract position title using LLM
-        position_title = self._extract_position_title_with_llm(job_brief)
-        print(f"📋 Position: {position_title}")
-
         # Extract criteria using LLM
         criteria_extraction = self._extract_criteria_with_llm(job_brief)
 
         # Generate scorecard
         scorecard = {
-            "position": position_title,
             "job_brief_analyzed": True,
             "extraction_method": "LLM-based",
             "must_have_criteria": criteria_extraction.must_have,
