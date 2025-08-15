@@ -109,6 +109,6 @@ class ScorecardAgent(BaseTool):
 
         return criteria_extraction
 
-    def run(self, input_data: Dict[str, Any]) -> str:
-        """Run the scorecard generator with input data"""
-        return self._run(job_brief=input_data.get("job_brief", ""))
+    # def run(self, input_data: Dict[str, Any]) -> str:
+    #     """Run the scorecard generator with input data"""
+    #     return self._run(job_brief=input_data.get("job_brief", ""))
