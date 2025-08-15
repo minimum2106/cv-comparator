@@ -164,7 +164,7 @@ class ToolRetriever(BaseRetriever):
 class ReadTxtFileInput(BaseModel):
     file_path: str = Field(
         ...,
-        description="Path to the .txt file to read.",
+        description="Extract the path of .txt file containing the context we need.",
     )
 
 
@@ -215,7 +215,7 @@ def read_txt_file(file_path: str) -> str:
 class ReadTxtDirectoryInput(BaseModel):
     directory: str = Field(
         ...,
-        description="Directory path containing .txt files to read.",
+        description="Extract the directory path containing .txt files to read.",
     )
 
 
@@ -233,9 +233,7 @@ def read_txt_directory(directory: str) -> str:
         if not os.path.isdir(directory):
             return f"Error: '{directory}' is not a directory."
 
-        txt_files = []
         file_contents = []
-
         # Get all .txt files
         for filename in os.listdir(directory):
             if filename.endswith(".txt"):
@@ -245,11 +243,6 @@ def read_txt_directory(directory: str) -> str:
                 except Exception as e:
                     file_contents.append(f"Error reading file: {e}")
 
-        if not txt_files:
-            return f"No .txt files found in directory '{directory}'"
-
-        result = f"Found {len(txt_files)} txt files in '{directory}':\n"
-        result += f"Files: {', '.join(txt_files)}\n\n"
         result += "\n\n".join(file_contents)
 
         return result
