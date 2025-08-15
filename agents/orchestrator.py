@@ -290,10 +290,6 @@ class Orchestrator:
                 filtered_context.append(f"- {step_name}: {result}")
 
         task_formatted = f"""
-            This is the full plan for the workflow looking at the current step and only think
-            about the current step and its dependencies. The rest is only theref for context:
-            {plan_str}
-
             You are tasked with executing step: {current_step.name}
             Description: {current_step.description}
 
@@ -303,19 +299,20 @@ class Orchestrator:
             Previous completed steps (dependencies) this is where you could get the context you need to call tool if you have any:
             {chr(10).join(filtered_context) if filtered_context else "No dependencies"}
 
-            Execute this step and provide the result. Don't modify the result.
-            RETURN RAW RESULT!
-
-            If you have tools available, use them. If not, apply your reasoning to complete the step.
-            If you cannot complete the step with available information, return <FAILED_STEP> and explain why.
+            Execute this step and return the result
         """
 
         try:
-            # Create React agent - it will automatically handle tool usage or LLM reasoning
+            
             agent_executor = create_react_agent(
                 self.llm,
                 step_tools,  # Empty list is fine - agent will use LLM reasoning
-                prompt="""You are a helpful assistant that executes workflow steps.
+                prompt="""
+                    You are a helpful assistant that executes a workflow step.
+                    Please focus on the step provided and its requirements.
+
+                    ONLY FOCUS ON SOLVING THAT STEP, NOTHING ELSE.
+                    WHEN YOU FINISH THE INDICATED STEP, RETURN ITS RESULT AND STOP WORKING
 
                     RULES:
                     1. If tools are available, use them to complete the task
@@ -324,7 +321,9 @@ class Orchestrator:
                     4. Return actual results, not explanations of what you would do
                     5. If you cannot complete the step, return <FAILED_STEP> with detailed explanation about the error
 
-                    Be direct and provide actionable results.""",
+                    Be direct and provide actionable results.
+                    IMPORTANT: After you get a tool result, DO NOT call any tool again. Just return the result and finish the step.
+                """,
             )
 
             print(f"   🔧 Executing with {len(step_tools)} tool(s)")
