@@ -1,5 +1,6 @@
-from typing import Dict, List
+from typing import Dict, List, Annotated
 from dotenv import load_dotenv
+import operator
 import uuid
 import os
 
@@ -218,21 +219,47 @@ read_text_file_tool = StructuredTool.from_function(
 
 class ReadTxtDirectoryInput(BaseModel):
     directory: str = Field(
-        ...,
         description="Extract the directory path containing .txt files to read.",
+    )
+
+
+class FileContent(BaseModel):
+    file_name: str = Field(
+        description="The name of the .txt file.",
+    )
+    content: str = Field(
+        description="The extracted content of the .txt file.",
+    )
+
+
+class ReadTxtDirectoryOutput(BaseModel):
+    file_contents: List[FileContent] = Field(
+        default_factory=list,
+        description="The combined contents of all .txt files in the directory.",
     )
 
 
 @tool(
     name_or_callable="read_txt_directory",
-    description="Gather all txt files in a directory and return their contents in a single string.",
+    description="""
+        Read all txt files in a directory, 
+        wrap the content of each file into file_name and content
+        and return the combined contents.
+    """,
     args_schema=ReadTxtDirectoryInput,
 )
-def read_txt_directory(directory: str) -> str:
+def read_txt_directory(directory: str) -> dict:
     """Read all .txt files from a directory and return their contents."""
     try:
         if not os.path.exists(directory):
-            return f"Error: Directory '{directory}' does not exist."
+            return ReadTxtDirectoryOutput(
+                file_contents=[
+                    FileContent(
+                        file_name="error",
+                        content=f"Error: Directory '{directory}' does not exist.",
+                    )
+                ]
+            ).model_dump()
 
         if not os.path.isdir(directory):
             return f"Error: '{directory}' is not a directory."
@@ -243,16 +270,25 @@ def read_txt_directory(directory: str) -> str:
             if filename.endswith(".txt"):
                 file_path = os.path.join(directory, filename)
                 try:
-                    file_contents.append(read_txt_file(file_path))
+                    file_contents.append(
+                        FileContent(
+                            file_name=filename, content=read_txt_file(file_path)
+                        )
+                    )
                 except Exception as e:
                     file_contents.append(f"Error reading file: {e}")
 
-        result = "\n\n".join(file_contents)
-
-        return result
+        return ReadTxtDirectoryOutput(file_contents=file_contents).model_dump()
 
     except Exception as e:
-        return f"Error accessing directory '{directory}': {str(e)}"
+        return ReadTxtDirectoryOutput(
+            file_contents=[
+                FileContent(
+                    file_name="error",
+                    content=f"Error accessing directory '{directory}': {str(e)}",
+                )
+            ]
+        ).model_dump()
 
 
 # Initialize and populate ToolRetriever

@@ -56,7 +56,7 @@ class ScorecardAgent(BaseTool):
     def __init__(self):
         super().__init__()
 
-    def _extract_criteria_with_llm(self, job_brief: str) -> CriteriaExtraction:
+    def _extract_criteria_with_llm(self, job_brief: str) -> dict:
         """Use LLM to extract must-have and nice-to-have criteria from job brief"""
 
         extraction_prompt = f"""
@@ -90,7 +90,7 @@ class ScorecardAgent(BaseTool):
                 f"✅ Extracted {len(response.must_have)} must-have and {len(response.nice_to_have)} nice-to-have criteria"
             )
 
-            return response
+            return response.model_dump()
 
         except Exception as e:
             print(f"❌ LLM criteria extraction failed: {e}")
@@ -98,9 +98,9 @@ class ScorecardAgent(BaseTool):
             return CriteriaExtraction(
                 must_have=[],
                 nice_to_have=[],
-            )
+            ).model_dump()
 
-    def _run(self, job_brief: str) -> CriteriaExtraction:
+    def _run(self, job_brief: str) -> dict:
         """
         Create evaluation scorecard from job brief using LLM
         """
