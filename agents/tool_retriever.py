@@ -247,7 +247,7 @@ def read_txt_directory(directory: str) -> str:
                 except Exception as e:
                     file_contents.append(f"Error reading file: {e}")
 
-        result += "\n\n".join(file_contents)
+        result = "\n\n".join(file_contents)
 
         return result
 
