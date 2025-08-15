@@ -61,7 +61,7 @@ class ToolRetriever(BaseRetriever):
         enhanced_query = self._generate_enhanced_query(query)
 
         # Search vector store
-        tool_documents = self.vector_store.similarity_search(enhanced_query, k=3)
+        tool_documents = self.vector_store.similarity_search(enhanced_query, k=1)
 
         # Enhance documents with tool metadata
         enhanced_docs = []
@@ -168,11 +168,6 @@ class ReadTxtFileInput(BaseModel):
     )
 
 
-@tool(
-    name_or_callable="read_txt_file",
-    description="Read a file and return its contents with automatic encoding fix for special characters.",
-    args_schema=ReadTxtFileInput,
-)
 def read_txt_file(file_path: str) -> str:
     """Read a text file with automatic encoding detection and fixing."""
     try:
@@ -211,6 +206,15 @@ def read_txt_file(file_path: str) -> str:
 
     except Exception as e:
         return f"Error reading file '{file_path}': {str(e)}"
+
+
+read_text_file_tool = StructuredTool.from_function(
+    func=read_txt_file,
+    name="read_txt_file",
+    description="Read a file and return its contents with automatic encoding fix for special characters.",
+    args_schema=ReadTxtFileInput,
+)
+
 
 class ReadTxtDirectoryInput(BaseModel):
     directory: str = Field(
@@ -251,8 +255,6 @@ def read_txt_directory(directory: str) -> str:
         return f"Error accessing directory '{directory}': {str(e)}"
 
 
-
-
 # Initialize and populate ToolRetriever
 def setup_tool_retriever() -> ToolRetriever:
     """Setup and populate the ToolRetriever."""
@@ -260,7 +262,7 @@ def setup_tool_retriever() -> ToolRetriever:
 
     # Add tools
     tools = [
-        read_txt_file,
+        read_text_file_tool,
         read_txt_directory,
         WriterAgent(),
         ComparatorAgent(),
