@@ -221,7 +221,7 @@ class ReadTxtDirectoryInput(BaseModel):
 
 @tool(
     name_or_callable="read_txt_directory",
-    description="Gather all txt files in a directory and return their contents with filenames.",
+    description="Gather all txt files in a directory and return their contents in a single string.",
     args_schema=ReadTxtDirectoryInput,
 )
 def read_txt_directory(directory: str) -> str:
