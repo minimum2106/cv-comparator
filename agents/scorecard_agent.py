@@ -47,7 +47,9 @@ class ScorecardAgent(BaseTool):
 
     name: str = "scorecard_generator"
     description: str = (
-        "Generate evaluation criteria scorecard from job brief text. Extracts requirements and categorizes them into must-have and nice-to-have criteria."
+        """Generate evaluation criteria scorecard from job brief text. 
+        Extracts requirements and categorizes them into must-have and nice-to-have criteria.
+        """
     )
     args_schema: Type[BaseModel] = ScorecardInput
 
@@ -98,7 +100,7 @@ class ScorecardAgent(BaseTool):
                 nice_to_have=[],
             )
 
-    def _run(self, job_brief: str) -> str:
+    def _run(self, job_brief: str) -> CriteriaExtraction:
         """
         Create evaluation scorecard from job brief using LLM
         """
