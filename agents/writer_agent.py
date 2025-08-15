@@ -235,12 +235,3 @@ class WriterAgent(BaseTool):
             )
 
         return "\n".join(focus_areas)
-
-    # def run(self, input_data: Dict[str, Any]) -> str:
-    #     """Run the writer agent with input data"""
-    #     return self._run(
-    #         comparison_results=input_data.get("comparison_results", {}),
-    #         evaluation_criteria=input_data.get("evaluation_criteria", {}),
-    #         position_title=input_data.get("position_title", ""),
-    #         client_name=input_data.get("client_name", "Client"),
-    #     )
