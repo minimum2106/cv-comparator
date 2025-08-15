@@ -108,7 +108,3 @@ class ScorecardAgent(BaseTool):
         criteria_extraction = self._extract_criteria_with_llm(job_brief)
 
         return criteria_extraction
-
-    # def run(self, input_data: Dict[str, Any]) -> str:
-    #     """Run the scorecard generator with input data"""
-    #     return self._run(job_brief=input_data.get("job_brief", ""))

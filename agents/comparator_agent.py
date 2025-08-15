@@ -329,10 +329,3 @@ class ComparatorAgent(BaseTool):
                     print(f"Error reading {filename}: {e}")
 
         return cv_data
-
-    # def run(self, input_data: Dict[str, Any]) -> str:
-    #     """Run the comparator with input data"""
-    #     return self._run(
-    #         cv_data=input_data.get("cv_data", []),
-    #         evaluation_criteria=input_data.get("evaluation_criteria", {}),
-    #     )
