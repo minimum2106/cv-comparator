@@ -14,7 +14,7 @@ from langchain_openai import OpenAIEmbeddings
 from langchain_groq import ChatGroq
 from pydantic import BaseModel, Field
 
-from agents.orchestrator import TaskStep
+from common.schemas import TaskStep
 
 load_dotenv()
 

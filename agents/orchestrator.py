@@ -14,32 +14,11 @@ from langchain_openai import ChatOpenAI
 from pydantic import BaseModel, Field
 
 from agents.prompts import GENERATE_PLAN_SYSTEM_PROMPT
-from agents.tool_retriever import tool_retriever
+from retrievers.tool_retriever import tool_retriever
+from common.schemas import TaskStep
+
 
 load_dotenv()
-
-class TaskStep(BaseModel):
-    step_id: str = Field(description="Unique identifier for the step")
-    name: str = Field(description="Name of the step")
-    description: str = Field(
-        description="Detailed description of what this step accomplishes"
-    )
-    inputs: Union[str, None] = Field(
-        default="", description="Descriptions of the inputs for this step"
-    )
-    outputs: Union[str, None] = Field(
-        default="", description="Descriptions of the expected outputs for this step"
-    )
-    tools: List[BaseTool] = Field(
-        default_factory=list, description="List of tools required for this step"
-    )
-    dependencies: List[str] = Field(
-        default_factory=list, description="List of step names that this step depends on"
-    )
-
-
-class TaskList(BaseModel):
-    steps: List[TaskStep] = Field(description="List of executable steps")
 
 
 class OrchestratorState(BaseModel):
@@ -303,7 +282,7 @@ class Orchestrator:
         """
 
         try:
-            
+
             agent_executor = create_react_agent(
                 self.llm,
                 step_tools,  # Empty list is fine - agent will use LLM reasoning
@@ -356,7 +335,6 @@ class Orchestrator:
                 "current_step_index": state.current_step_index,  # Don't advance
             }
 
-
     def _replan_execution(self, state: OrchestratorState):
         """Replan the current step if it failed, or continue if successful"""
         print(f"🔄 Replanning based on execution results...")
@@ -395,7 +373,9 @@ class Orchestrator:
                     return {
                         "steps": new_steps,
                         "current_step_index": failed_step_index,  # Reset to retry failed step
-                        "past_steps": state.past_steps[:-1],  # Remove the failed attempt
+                        "past_steps": state.past_steps[
+                            :-1
+                        ],  # Remove the failed attempt
                     }
                 else:
                     print(f"⚠️ Could not replan step, continuing...")
@@ -418,8 +398,6 @@ class Orchestrator:
 
         replan_prompt = f"""
             A workflow step has failed and needs to be replanned. Analyze the failure and create an improved step.
-
-            ORIGINAL USER QUERY: {user_query}
 
             FAILED STEP:
             Name: {failed_step.name}
