@@ -221,10 +221,6 @@ Have a great day! 🌟"""
         """Print step created message"""
         print(f"   ✅ {step_name}")
 
-    def get_user_input(self) -> str:
-        """Get user input with quit handling"""
-        return input().strip()
-
     def check_quit_command(self, user_input: str) -> bool:
         """Check if user input is a quit command"""
         return user_input.lower() in ["quit", "exit", "q"]

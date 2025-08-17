@@ -66,8 +66,9 @@ class Orchestrator:
         self.ui.print_assistant_message(
             "Welcome! Please describe what you'd like me to help you with today."
         )
+
         self.ui.print_user_prompt()
-        user_input = self.ui.get_user_input()
+        user_input = self.get_multiline_input()
 
         # Check for quit command
         if self.ui.check_quit_command(user_input):
@@ -102,7 +103,7 @@ class Orchestrator:
 
             # Get user input with styled prompt
             self.ui.print_user_prompt()
-            current_user_input = self.ui.get_user_input()
+            current_user_input = self.get_multiline_input()
 
             # Check for quit command during interaction
             if self.ui.check_quit_command(current_user_input):
@@ -608,3 +609,35 @@ class Orchestrator:
         )
 
         return {"user_query": cleaned_user_query.content}
+
+    def get_multiline_input(self) -> str:
+        """Get multiline input from user, ending when they press Enter twice"""
+        lines = []
+        empty_line_count = 0
+
+        while True:
+            try:
+                line = input()
+
+                # Check if it's an empty line
+                if line.strip() == "":
+                    empty_line_count += 1
+                    # If this is the second consecutive empty line, break
+                    if empty_line_count >= 2:
+                        break
+                    lines.append(line)
+                else:
+                    empty_line_count = 0
+                    lines.append(line)
+
+            except EOFError:
+                break
+            except KeyboardInterrupt:
+                print("\n🚫 Input cancelled. Type 'quit' to exit.")
+                return ""
+
+        # Remove trailing empty lines
+        while lines and lines[-1].strip() == "":
+            lines.pop()
+
+        return "\n".join(lines)
