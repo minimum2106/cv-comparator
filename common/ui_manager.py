@@ -144,8 +144,9 @@ Have a great day! 🌟"""
 
     def print_step_execution(self, step_index: int, step_name: str, description: str):
         """Print step execution information"""
-        print("=================== EXECUTING CURRENT STEP ===================")
-        print(f"🚀 Executing Step {step_index + 1}: {step_name}")
+        print("┌" + "─" * 68 + "┐")
+        print(f"│ Executing Step {step_index + 1}: {step_name} │")
+        print("└" + "─" * 68 + "┘")
         print(f"   Description: {description}")
 
     def print_tool_retrieval(self, step_name: str):
