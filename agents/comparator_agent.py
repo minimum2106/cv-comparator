@@ -29,7 +29,7 @@ with open("project.toml", "rb") as f:
 
 class ComparatorInput(BaseModel):
     cv_data: List[str] = Field(
-        description="CV data in string format, emphasizing the details of each candidate"
+        description="CV's file content, emphasizing the details of each candidate"
     )
     evaluation_criteria: Dict[str, str] = Field(
         description="Evaluation criteria with either 'must have' or 'nice to have' (e.g., {'python': 'must have', 'experience': 'nice to have', 'education': 'must have', 'projects': 'nice to have'})"
