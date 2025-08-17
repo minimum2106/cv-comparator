@@ -17,6 +17,7 @@ from pydantic import BaseModel, Field
 from agents.writer_agent import WriterAgent
 from agents.comparator_agent import ComparatorAgent
 from agents.scorecard_agent import ScorecardAgent
+from agents.common_tools import read_text_file_tool
 
 
 load_dotenv()
@@ -162,59 +163,7 @@ class ToolRetriever(BaseRetriever):
         return results
 
 
-class ReadTxtFileInput(BaseModel):
-    file_path: str = Field(
-        ...,
-        description="Extract the path of .txt file containing the context we need.",
-    )
 
-
-def read_txt_file(file_path: str) -> str:
-    """Read a text file with automatic encoding detection and fixing."""
-    try:
-        from agents.utils import TextProcessor
-
-        if not os.path.exists(file_path):
-            return f"Error: File '{file_path}' does not exist."
-
-        if not os.path.isfile(file_path):
-            return f"Error: '{file_path}' is not a file."
-
-        # Read file with error handling for encoding issues
-        try:
-            with open(file_path, "r", encoding="utf-8", errors="replace") as f:
-                content = f.read().strip()
-        except UnicodeDecodeError:
-            # Fallback to latin-1 encoding if UTF-8 fails
-            with open(file_path, "r", encoding="latin-1") as f:
-                content = f.read().strip()
-
-        if not content:
-            return f"File '{file_path}' is empty."
-
-        # Automatically detect and fix encoding issues
-        original_length = len(content)
-        fixed_content = TextProcessor.detect_and_fix_encoding(content)
-
-        # Log if encoding fixes were applied
-        if len(fixed_content) != original_length or "Ã" in content:
-            print(f"🔧 Applied encoding fixes to '{file_path}'")
-            print(
-                f"   Original: {original_length} chars → Fixed: {len(fixed_content)} chars"
-            )
-
-        return fixed_content
-
-    except Exception as e:
-        return f"Error reading file '{file_path}': {str(e)}"
-
-
-read_text_file_tool = StructuredTool.from_function(
-    func=read_txt_file,
-    name="read_txt_file",
-    description="Read a file and return its contents with automatic encoding fix for special characters.",
-    args_schema=ReadTxtFileInput,
-)
 
 
 class ReadTxtDirectoryInput(BaseModel):
@@ -299,7 +248,7 @@ def setup_tool_retriever() -> ToolRetriever:
     # Add tools
     tools = [
         read_text_file_tool,
-        read_txt_directory,
+        # read_txt_directory,
         WriterAgent(),
         ComparatorAgent(),
         ScorecardAgent(),

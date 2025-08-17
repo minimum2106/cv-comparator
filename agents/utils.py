@@ -1,6 +1,9 @@
-import re
-import unicodedata
 from typing import Optional
+import unicodedata
+import os
+import re
+
+from pydantic import BaseModel, Field
 
 class TextProcessor:
     """Utility class for handling text encoding and cleaning issues"""
@@ -109,3 +112,50 @@ class TextProcessor:
         text = text.replace('\\', '\\\\').replace('"', '\\"')
         
         return text
+    
+
+class ReadTxtFileInput(BaseModel):
+    file_path: str = Field(
+        ...,
+        description="Extract the path of .txt file containing the context we need.",
+    )
+
+
+def read_txt_file(file_path: str) -> str:
+    """Read a text file with automatic encoding detection and fixing."""
+    try:
+
+        if not os.path.exists(file_path):
+            return f"Error: File '{file_path}' does not exist."
+
+        if not os.path.isfile(file_path):
+            return f"Error: '{file_path}' is not a file."
+
+        # Read file with error handling for encoding issues
+        try:
+            with open(file_path, "r", encoding="utf-8", errors="replace") as f:
+                content = f.read().strip()
+        except UnicodeDecodeError:
+            # Fallback to latin-1 encoding if UTF-8 fails
+            with open(file_path, "r", encoding="latin-1") as f:
+                content = f.read().strip()
+
+        if not content:
+            return f"File '{file_path}' is empty."
+
+        # Automatically detect and fix encoding issues
+        original_length = len(content)
+        fixed_content = TextProcessor.detect_and_fix_encoding(content)
+
+        # Log if encoding fixes were applied
+        if len(fixed_content) != original_length or "Ã" in content:
+            print(f"🔧 Applied encoding fixes to '{file_path}'")
+            print(
+                f"   Original: {original_length} chars → Fixed: {len(fixed_content)} chars"
+            )
+
+        return fixed_content
+
+    except Exception as e:
+        return f"Error reading file '{file_path}': {str(e)}"
+

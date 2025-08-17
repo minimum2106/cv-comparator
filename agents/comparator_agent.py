@@ -11,6 +11,8 @@ from langchain_groq import ChatGroq
 from langchain_core.messages import HumanMessage
 from pydantic import BaseModel, Field
 
+from agents.utils import read_txt_file
+
 load_dotenv()
 
 with open("project.toml", "rb") as f:
@@ -25,14 +27,45 @@ with open("project.toml", "rb") as f:
         LLM = ChatGroq(model=model, temperature=0.0, streaming=False)
     else:
         raise ValueError("Unsupported model provider")
+    
+
+class ReadTxtDirectoryInput(BaseModel):
+    directory: str = Field(
+        description="Extract the directory path containing .txt files to read.",
+    )
+
+
+class FileContent(BaseModel):
+    file_name: str = Field(
+        description="The name of the .txt file.",
+    )
+    content: str = Field(
+        description="The extracted content of the .txt file.",
+    )
+
+
+class ReadTxtDirectoryOutput(BaseModel):
+    file_contents: List[FileContent] = Field(
+        default_factory=list,
+        description="The combined contents of all .txt files in the directory.",
+    )
 
 
 class ComparatorInput(BaseModel):
-    cv_data: List[str] = Field(
-        description="CV's file content, emphasizing the details of each candidate"
+    cv_directory: str = Field(
+        description="Directory containing CV txt files"
     )
     evaluation_criteria: Dict[str, str] = Field(
-        description="Evaluation criteria with either 'must have' or 'nice to have' (e.g., {'python': 'must have', 'experience': 'nice to have', 'education': 'must have', 'projects': 'nice to have'})"
+        description="""
+            Evaluation criteria with either 'must have' or 'nice to have' 
+            (e.g., {'Have experience working in startups': 'must have', 
+                    'Machine Learning experience': 'nice to have', 
+                    'Bachelor degree in Computer Science': 'must have', 
+                    'AWS cloud experience': 'nice to have',
+                    'Leadership experience': 'nice to have',
+                    'French language skills': 'must have',
+            })
+        """
     )
 
 
@@ -54,7 +87,10 @@ class ComparatorAgent(BaseTool):
 
     name: str = "cv_comparator"
     description: str = (
-        "This agent compares CVs against evaluation criteria with must-have and nice-to-have priorities using LLM analysis"
+        "Read all txt files in a directory"
+        "wrap the content of each file into file_name and content "
+        "and compares CVs against evaluation criteria with must-have and nice-to-have priorities using LLM analysis"
+        "and returns a structured report"
     )
     args_schema: Type[BaseModel] = ComparatorInput
 
@@ -141,10 +177,12 @@ class ComparatorAgent(BaseTool):
 
         return must_have_count + (nice_to_have_count * 0.5)
 
-    def _run(self, cv_data: List[str], evaluation_criteria: Dict[str, str]) -> str:
+    def _run(self, cv_directory: str, evaluation_criteria: Dict[str, str]) -> dict:
         """
         Load CVs from directory and apply LLM-based criteria analysis
         """
+    
+        cv_data = self.read_txt_directory(cv_directory)
 
         # Separate criteria by priority
         must_have_criteria = [
@@ -163,15 +201,15 @@ class ComparatorAgent(BaseTool):
 
         results = []
 
-        for i, cv in enumerate(cv_data):
-            candidate_name = cv.get("name", f"Candidate_{i+1}")
-            cv_content = cv.get("content", "")
+        for i, cv in enumerate(cv_data.file_contents):
+            cv_file_name = cv.file_name
+            cv_content = cv.content
 
-            print(f"🔍 Analyzing: {candidate_name} with LLM...")
+            print(f"🔍 Analyzing: {cv_file_name} with LLM...")
 
             # Use LLM to analyze CV against criteria
             analysis = self._analyze_cv_with_llm(
-                cv_content, all_criteria, candidate_name
+                cv_content, all_criteria, cv_file_name
             )
 
             # Calculate scores based on LLM analysis
@@ -197,8 +235,7 @@ class ComparatorAgent(BaseTool):
 
             # Create candidate result
             candidate_result = {
-                "name": candidate_name,
-                "filename": cv.get("filename"),
+                "filename": cv_file_name,
                 "raw_score": raw_score,
                 "max_possible_score": max_possible_score,
                 "percentage": percentage,
@@ -218,7 +255,7 @@ class ComparatorAgent(BaseTool):
         # Generate comparison table
         comparison_table = self._generate_comparison_table(results, evaluation_criteria)
 
-        return json.dumps(
+        result = json.dumps(
             {
                 "total_candidates": len(results),
                 "analysis_method": "LLM-based",
@@ -238,6 +275,8 @@ class ComparatorAgent(BaseTool):
             indent=2,
         )
 
+        return result
+
     def _generate_comparison_table(
         self, results: List[Dict], criteria: Dict[str, str]
     ) -> str:
@@ -252,7 +291,7 @@ class ComparatorAgent(BaseTool):
         ]
 
         # Table header
-        header = "| Rank | Candidate | Filename | "
+        header = "| Rank | Filename | "
 
         # Add must-have columns
         for criterion in must_have_criteria:
@@ -273,7 +312,7 @@ class ComparatorAgent(BaseTool):
         # Table rows
         rows = []
         for rank, candidate in enumerate(results, 1):
-            row = f"| {rank} | {candidate['name']} | {candidate.get('filename', 'N/A')} | "
+            row = f"| {rank} | {candidate.get('filename', 'N/A')} | "
 
             # Add must-have results
             for criterion in must_have_criteria:
@@ -303,29 +342,48 @@ class ComparatorAgent(BaseTool):
 
             rows.append(row)
 
-        return header + separator + "\n".join(rows)
 
-    def _load_cv_data(self, cv_directory: str) -> List[Dict[str, Any]]:
-        """Load CV data from the specified directory"""
-        cv_data = []
-        if not os.path.exists(cv_directory):
-            raise ValueError(f"CV directory '{cv_directory}' does not exist")
+        return header + separator + "\n".join(rows) 
 
-        for filename in os.listdir(cv_directory):
-            if filename.endswith(".txt"):
-                file_path = Path(cv_directory) / filename
-                try:
-                    with open(file_path, "r", encoding="utf-8") as f:
-                        content = f.read().strip()
-                        if content:  # Only include non-empty files
-                            cv_data.append(
-                                {
-                                    "name": filename,
-                                    "content": content,
-                                    "filename": filename,
-                                }
+    def read_txt_directory(self, directory: str) -> ReadTxtDirectoryOutput:
+        """Read all .txt files from a directory and return their contents."""
+        try:
+            if not os.path.exists(directory):
+                return ReadTxtDirectoryOutput(
+                    file_contents=[
+                        FileContent(
+                            file_name="error",
+                            content=f"Error: Directory '{directory}' does not exist.",
+                        )
+                    ]
+                )
+
+            if not os.path.isdir(directory):
+                return f"Error: '{directory}' is not a directory."
+
+            file_contents = []
+            # Get all .txt files
+            for filename in os.listdir(directory):
+                if filename.endswith(".txt"):
+                    file_path = os.path.join(directory, filename)
+                    try:
+                        file_contents.append(
+                            FileContent(
+                                file_name=filename, content=read_txt_file(file_path)
                             )
-                except Exception as e:
-                    print(f"Error reading {filename}: {e}")
+                        )
+                    except Exception as e:
+                        file_contents.append(f"Error reading file: {e}")
 
-        return cv_data
+            return ReadTxtDirectoryOutput(file_contents=file_contents)
+
+        except Exception as e:
+            return ReadTxtDirectoryOutput(
+                file_contents=[
+                    FileContent(
+                        file_name="error",
+                        content=f"Error accessing directory '{directory}': {str(e)}",
+                    )
+                ]
+            )
+
