@@ -1,3 +1,5 @@
+import os
+import sys
 from typing import List, Union, Annotated, Dict
 from dotenv import load_dotenv
 import tomllib
@@ -5,16 +7,19 @@ import operator
 import uuid
 import re
 
+from langgraph.types import Command, interrupt
+from langgraph.prebuilt import create_react_agent
+from langgraph.checkpoint.memory import InMemorySaver
+from langgraph.graph import StateGraph, END, START
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_core.tools import BaseTool
-from langgraph.prebuilt import create_react_agent
-from langgraph.graph import StateGraph, END, START
 from langchain_groq import ChatGroq
 from langchain_openai import ChatOpenAI
 from pydantic import BaseModel, Field
 
-from agents.prompts import GENERATE_PLAN_SYSTEM_PROMPT
+from agents.prompts import GENERATE_PLAN_SYSTEM_PROMPT, VALIDATE_USER_QUERY
 from retrievers.tool_retriever import tool_retriever
+from common.ui_manager import UIManager
 from common.schemas import TaskStep
 
 
@@ -27,12 +32,14 @@ class OrchestratorState(BaseModel):
     steps: List[TaskStep] = []
     past_steps: Annotated[List[tuple], operator.add] = []
     response: str = ""
-    current_step_index: int = 0  # Remove all_tools
+    current_step_index: int = 0
 
 
 class Orchestrator:
     def __init__(self):
         self.agent_database = {}
+        self.ui = UIManager()
+
         with open("project.toml", "rb") as f:
             config = tomllib.load(f)
             provider = config.get("project", {}).get("models").get("provider")
@@ -46,22 +53,83 @@ class Orchestrator:
             else:
                 raise ValueError("Unsupported model provider")
 
-    def run(self, user_query: str):
-        """Main execution method"""
-        print(f"🚀 Starting Orchestrator for query: {user_query}")
+    def _handle_quit(self):
+        """Handle user quit command with styled exit message"""
+        self.ui.print_goodbye_message()
+        sys.exit(0)
+
+    def run(self):
+        """Main execution method with enhanced UI"""
+        self.ui.clear_screen()
+        self.ui.print_header("CV Comparator Assistant", "🎯")
+
+        self.ui.print_assistant_message(
+            "Welcome! Please describe what you'd like me to help you with today."
+        )
+        self.ui.print_user_prompt()
+        user_input = self.ui.get_user_input()
+
+        # Check for quit command
+        if self.ui.check_quit_command(user_input):
+            self._handle_quit()
+
+        self.ui.print_analysis_start(user_input)
 
         # Initialize state
-        initial_state = OrchestratorState(user_query=user_query)
+        initial_state = OrchestratorState(user_query=user_input)
 
         # Build and execute the orchestrator graph
         graph = self._build_orchestrator_graph()
-        final_state = graph.invoke(initial_state)
+
+        config = {"configurable": {"thread_id": uuid.uuid4()}}
+        final_state = graph.invoke(initial_state, config=config)
+
+        # Enhanced interrupt handling with conversation UI
+        while final_state.get("__interrupt__"):
+            self.ui.clear_screen()
+            self.ui.print_header("Need More Information", "💬")
+
+            # Extract the question from interrupt
+            interrupt_data = final_state["__interrupt__"][-1]
+            question_text = (
+                interrupt_data.value
+                if hasattr(interrupt_data, "value")
+                else str(interrupt_data)
+            )
+
+            # Format and display the assistant's message
+            self.ui.print_assistant_message(question_text)
+
+            # Get user input with styled prompt
+            self.ui.print_user_prompt()
+            current_user_input = self.ui.get_user_input()
+
+            # Check for quit command during interaction
+            if self.ui.check_quit_command(current_user_input):
+                self._handle_quit()
+
+            user_input += "\n\nAdditional information: " + current_user_input
+
+            # Show loading message
+            self.ui.print_processing_message()
+
+            # Clear interrupt and resume
+            final_state["__interrupt__"] = []
+            final_state = graph.invoke(Command(resume=user_input), config=config)
+
+        # Clear screen for final result
+        self.ui.clear_screen()
+        self.ui.print_header("Analysis Complete", "✅")
 
         # Extract or generate final answer
         if hasattr(final_state, "response") and final_state.response:
             final_answer = final_state.response
         else:
             final_answer = "No response generated."
+
+        # Display final result with styling
+        self.ui.print_assistant_message(final_answer)
+        self.ui.print_completion_message()
 
         return final_answer
 
@@ -70,16 +138,18 @@ class Orchestrator:
         Build a workflow graph based on the agents and their execution steps.
         This method would create a StateGraph that represents the workflow.
         """
+        checkpointer = InMemorySaver()
         graph = StateGraph(OrchestratorState)
 
         # Simplified flow - remove assign_agent_to_task
+        graph.add_node("validate_query", self._validate_user_query)
         graph.add_node("planning", self._generate_plan)
         graph.add_node("creating_tasks", self._generate_tasks)
         graph.add_node("execute_step", self._execute_current_step)
         graph.add_node("replan", self._replan_execution)
 
-        # Direct flow from task creation to execution
-        graph.add_edge(START, "planning")
+        graph.add_edge(START, "validate_query")
+        graph.add_edge("validate_query", "planning")
         graph.add_edge("planning", "creating_tasks")
         graph.add_edge("creating_tasks", "execute_step")  # Direct to execution
         graph.add_edge("execute_step", "replan")
@@ -89,7 +159,7 @@ class Orchestrator:
             {"continue": "execute_step", "end": END},
         )
 
-        return graph.compile()
+        return graph.compile(checkpointer=checkpointer)
 
     def _generate_plan(self, state: OrchestratorState):
         """
@@ -141,7 +211,7 @@ class Orchestrator:
                 step_content = step_sections[i + 1].strip()
                 step_pairs.append((step_name, step_content))
 
-        print(f"📋 Found {len(step_pairs)} steps in plan")
+        self.ui.print_plan_found(len(step_pairs))
 
         for step_name, step_content in step_pairs:
             # Extract input from the content
@@ -222,12 +292,11 @@ class Orchestrator:
             )
 
             tasks.append(task_step)
-            print(f"   ✅ {step_name}")
+            self.ui.print_step_created(step_name)
 
         return {"steps": tasks}
 
     def _execute_current_step(self, state: OrchestratorState):
-        print("=================== EXECUTING CURRENT STEP ===================")
         """Execute the current step using React agent with dynamic tool assignment"""
 
         if not state.steps:
@@ -239,11 +308,12 @@ class Orchestrator:
         # Get current step to execute
         current_step = state.steps[state.current_step_index]
 
-        print(f"🚀 Executing Step {state.current_step_index + 1}: {current_step.name}")
-        print(f"   Description: {current_step.description}")
+        self.ui.print_step_execution(
+            state.current_step_index, current_step.name, current_step.description
+        )
 
         # Dynamic tool assignment for this step
-        print(f"🔍 Dynamically retrieving tools for: {current_step.name}")
+        self.ui.print_tool_retrieval(current_step.name)
         tool_docs = tool_retriever.invoke(current_step.description)
 
         # Extract actual tool objects
@@ -253,9 +323,8 @@ class Orchestrator:
                 tool_obj = tool_doc.metadata["tool_object"]
                 step_tools.append(tool_obj)
 
-        print(
-            f"   🛠️ Found {len(step_tools)} tool(s): {[tool.name for tool in step_tools] if step_tools else 'None - will use LLM reasoning'}"
-        )
+        tool_names = [tool.name for tool in step_tools] if step_tools else []
+        self.ui.print_tools_found(len(step_tools), tool_names)
 
         # Build plan string from all steps for context
         plan_str = "\n".join(
@@ -305,18 +374,17 @@ class Orchestrator:
                 """,
             )
 
-            print(f"   🔧 Executing with {len(step_tools)} tool(s)")
+            self.ui.print_tool_execution(len(step_tools))
 
             agent_response = agent_executor.invoke(
                 {"messages": [("user", task_formatted)]}
             )
 
             result = agent_response["messages"][-1].content
-            print(f"✅ Step completed")
-            print(f"📄 Result: {result}...")
+            self.ui.print_step_completed(result)
 
             if "<FAILED_STEP>" in result:
-                print("❌ Step execution failed")
+                self.ui.print_step_failed()
                 return {
                     "past_steps": [(current_step.name, result)],
                     "current_step_index": state.current_step_index,  # Don't advance
@@ -328,7 +396,7 @@ class Orchestrator:
             }
 
         except Exception as e:
-            print(f"❌ Step execution failed with exception: {e}")
+            self.ui.print_step_exception(str(e))
             error_result = f"<FAILED_STEP>: Exception occurred - {str(e)}"
             return {
                 "past_steps": [(current_step.name, error_result)],
@@ -337,11 +405,11 @@ class Orchestrator:
 
     def _replan_execution(self, state: OrchestratorState):
         """Replan the current step if it failed, or continue if successful"""
-        print(f"🔄 Replanning based on execution results...")
+        self.ui.print_replanning()
 
         # Check if we have completed all steps
         if state.current_step_index >= len(state.steps):
-            print("✅ All steps completed - generating final response")
+            self.ui.print_all_steps_completed()
             final_response = self._generate_final_response(state)
             return {"response": final_response}
 
@@ -350,7 +418,7 @@ class Orchestrator:
             last_result = state.past_steps[-1]
 
             if "<FAILED_STEP>" in last_result[1]:
-                print(f"❌ Last step failed, replanning...")
+                self.ui.print_failed_step_replanning()
 
                 # Get the failed step
                 failed_step_index = state.current_step_index
@@ -367,9 +435,7 @@ class Orchestrator:
                     new_steps[failed_step_index] = replanned_step
 
                     # Reset to retry the failed step
-                    print(
-                        f"🔄 Updated step {failed_step_index + 1}: {replanned_step.name}"
-                    )
+                    self.ui.print_step_updated(failed_step_index, replanned_step.name)
                     return {
                         "steps": new_steps,
                         "current_step_index": failed_step_index,  # Reset to retry failed step
@@ -378,13 +444,13 @@ class Orchestrator:
                         ],  # Remove the failed attempt
                     }
                 else:
-                    print(f"⚠️ Could not replan step, continuing...")
+                    self.ui.print_replan_failed()
                     return {}
             else:
-                print(f"✅ Last step successful, continuing...")
+                self.ui.print_last_step_successful()
                 return {}
         else:
-            print(f"📝 No previous steps to evaluate, continuing...")
+            self.ui.print_no_previous_steps()
             return {}
 
     def _replan_failed_step(
@@ -446,11 +512,11 @@ class Orchestrator:
 
                 return improved_step
             else:
-                print(f"   ❌ Could not parse replanned step")
+                self.ui.print_replan_parse_error()
                 return None
 
         except Exception as e:
-            print(f"   ❌ Replanning failed: {e}")
+            self.ui.print_replan_exception(str(e))
             return None
 
     def _should_end_execution(self, state: OrchestratorState):
@@ -485,3 +551,60 @@ class Orchestrator:
 
         response = self.llm.invoke([HumanMessage(content=final_prompt)])
         return response.content
+
+    def _validate_user_query(self, state: OrchestratorState):
+        """Validate the user's query before processing"""
+        user_query = state.user_query
+
+
+        class QueryValidation(BaseModel):
+            validation_result: str = Field(
+                description="Either 'SUFFICIENT' or 'INSUFFICIENT'"
+            )
+            issues: List[str] = Field(description="List of problems with the query")
+            clarifying_questions: List[str] = Field(
+                description="Questions to ask if insufficient", default=[]
+            )
+            plan_preview: List[str] = Field(
+                description="Brief workflow steps if sufficient", default=[]
+            )
+
+        structured_llm = self.llm.with_structured_output(QueryValidation)
+        system_prompt = VALIDATE_USER_QUERY.format(user_query=user_query)
+        response = structured_llm.invoke([HumanMessage(content=system_prompt)])
+
+        validation_result = response.validation_result
+
+        while validation_result == "INSUFFICIENT":
+            # Format the conversation message
+            conversation_message = self.ui.format_issues_and_questions(
+                response.issues, response.clarifying_questions
+            )
+            conversation_message += (
+                "\n💡 Please provide additional details to help me assist you better."
+            )
+
+            # Use interrupt to ask for more information
+            user_query = interrupt(conversation_message)
+
+            # Re-validate with the additional information
+            updated_prompt = VALIDATE_USER_QUERY.format(user_query=user_query)
+            response = structured_llm.invoke([HumanMessage(content=updated_prompt)])
+            validation_result = response.validation_result
+
+        # Clean up the final query
+        cleaned_user_query = self.llm.invoke(
+            [
+                SystemMessage(
+                    content="""
+                You are a query reorganization expert. 
+                Your task is to create a cleaned version of the following user input.
+                REMEMBER TO NOT REMOVE OR ADD ANY INFORMATION FROM THE USER INPUT, JUST REWRITE TO BE EASIER TO UNDERSTAND.
+                Make it concise and clear while preserving all the important details.
+            """
+                ),
+                HumanMessage(content=user_query),
+            ]
+        )
+
+        return {"user_query": cleaned_user_query.content}
