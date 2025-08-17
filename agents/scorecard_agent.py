@@ -8,6 +8,8 @@ from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage
 from pydantic import BaseModel, Field
 
+from agents.prompts import SCORECARD_AGENT_PROMPT
+
 
 with open("project.toml", "rb") as f:
     config = tomllib.load(f)
@@ -59,28 +61,7 @@ class ScorecardAgent(BaseTool):
     def _extract_criteria_with_llm(self, job_brief: str) -> dict:
         """Use LLM to extract must-have and nice-to-have criteria from job brief"""
 
-        extraction_prompt = f"""
-        Analyze the following job brief and extract evaluation criteria for candidate assessment.
-        
-        JOB BRIEF:
-        {job_brief}
-        
-        INSTRUCTIONS:
-        1. If the job brief is in a language other than English, translate it to English first.
-        2. Identify MUST-HAVE criteria - Essential qualifications, skills, and experience that are absolutely required for the role
-        3. Identify NICE-TO-HAVE criteria - Preferred qualifications, skills, and experience that would be beneficial but not essential
-        4. Focus on specific, measurable criteria that can be evaluated in a candidate
-        5. Include both technical skills and soft skills where applicable
-        6. Avoid overly broad or vague criteria
-        7. Each criterion should be 2-8 words long and clearly defined
-        
-        EXAMPLES OF GOOD CRITERIA:
-        - "3+ years Python experience"
-        - "Bachelor's degree in Computer Science"
-        - "REST API development experience"
-        - "Team leadership skills"
-        - "Agile methodology experience"
-        """
+        extraction_prompt = SCORECARD_AGENT_PROMPT.format(job_brief=job_brief)
 
         try:
             structured_llm = LLM.with_structured_output(CriteriaExtraction)
