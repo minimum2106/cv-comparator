@@ -29,6 +29,8 @@ The Orchestrator follows a systematic 4-step process:
 3. **Dynamic Step Execution**
 
    - Executes each step using specialized tools from the Tool Store
+      - Incorporating the results of the dependent step into the prompt. (For example, to analyze a job brief, it should incoporate the result of load txt file step to get the content of the file)
+      - Selecting the appropriate tool from the Tool Store based on the task description.
    - Falls back to LLM reasoning when tools are unavailable
    - Implements failure recovery with step replanning and retry mechanisms
 
@@ -120,6 +122,8 @@ INPUT SOURCES:
 
 - Redesign the Writer Agent, as the current implementation is not robust enough for real-world use.
 - Implement a plan retriever to store and reuse successful workflows. This will allow the system to directly execute proven workflows when users make repeat requests, instead of rebuilding them from scratch.
+- The current mechanism for incorporating history is quite basic. For example, if a previous step produces a large output (such as loading the contents of 50 files in a directory or a very large document), the workflow cannot handle it effectively. Attempting to insert everything into a single prompt quickly exceeds the context window.
+A better solution is to introduce a Retrieval-Augmented Generation (RAG) system that transforms the results into smaller, manageable chunks and dynamically retrieves only the relevant portions when needed.
 - Enable workflows to run tasks in parallel where beneficial. For example, when processing multiple files, the system should identify opportunities to execute steps concurrently to improve efficiency.
 - Improve error handling within workflows. Currently, a failure in the middle of execution can cause vulnerabilities; better resilience and recovery mechanisms are needed.
 - Expand the toolset to test the Orchestrator’s ability to handle diverse workflows. At present, the plan-generation step operates independently of tool availability, so methods should be introduced to better align planning with actual tool capabilities.
