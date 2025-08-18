@@ -100,7 +100,7 @@ class WriterAgent(BaseTool):
 
             ## Conclusion
 
-            Based on our comprehensive analysis, we recommend proceeding with interviews for the top 3 candidates. Each brings unique strengths that align well with the {position} requirements.
+            Based on our comprehensive analysis, we recommend proceeding with interviews for the top 3 candidates. Each brings unique strengths that align well with the requirements.
 
             **Next Steps:**
             - Contact candidates for interview scheduling
