@@ -13,10 +13,6 @@ class WriterInput(BaseModel):
     evaluation_criteria: Dict[str, int] = Field(
         description="Evaluation criteria used for scoring"
     )
-    position_title: str = Field(description="Job position title")
-    client_name: str = Field(
-        default="Client", description="Client name for personalization"
-    )
 
 
 class WriterAgent(BaseTool):
@@ -32,8 +28,6 @@ class WriterAgent(BaseTool):
         self,
         comparison_results: Dict[str, Any],
         evaluation_criteria: Dict[str, int],
-        position_title: str,
-        client_name: str = "Client",
     ) -> str:
         """
         Generate final synthesis report with recommendations
@@ -49,8 +43,6 @@ class WriterAgent(BaseTool):
             top_3_candidates,
             comparison_table,
             evaluation_criteria,
-            position_title,
-            client_name,
         )
 
         return report
@@ -60,17 +52,13 @@ class WriterAgent(BaseTool):
         top_candidates: List[Dict],
         comparison_table: str,
         criteria: Dict[str, int],
-        position: str,
-        client: str,
     ) -> str:
         """Generate structured report with executive summary and recommendations"""
 
         report_date = datetime.now().strftime("%B %d, %Y")
 
-        report = f"""# CV Analysis Report - {position}
+        report = f"""# CV Analysis Report - 
 
-            **Client:** {client}  
-            **Position:** {position}  
             **Date:** {report_date}  
             **Candidates Evaluated:** {len(comparison_table.split('|')) // 6 if comparison_table else 0}
 
@@ -78,7 +66,8 @@ class WriterAgent(BaseTool):
 
             ## Executive Summary
 
-            We have completed the analysis of candidates for the **{position}** position. Based on our evaluation criteria, we present the complete comparison results and detailed recommendations for the top 3 candidates.
+            We have completed the analysis of candidates based on the job brief. 
+            Based on our evaluation criteria, we present the complete comparison results and detailed recommendations for the top 3 candidates.
 
             ### Evaluation Criteria Used:
             {self._format_criteria_summary(criteria)}
@@ -93,7 +82,7 @@ class WriterAgent(BaseTool):
 
             ## Top 3 Candidate Recommendations
 
-            {self._generate_top_3_analysis(top_candidates, position)}
+            {self._generate_top_3_analysis(top_candidates)}
 
             ---
 
@@ -136,7 +125,7 @@ class WriterAgent(BaseTool):
         return "\n".join(criteria_list)
 
     def _generate_top_3_analysis(
-        self, top_candidates: List[Dict], position: str
+        self, top_candidates: List[Dict]
     ) -> str:
         """Generate detailed analysis for top 3 candidates"""
 
@@ -165,7 +154,7 @@ class WriterAgent(BaseTool):
 
             # Generate recommendation
             recommendation = self._generate_candidate_recommendation(
-                i, total_score, percentage
+                i, percentage
             )
 
             analysis = f"""### #{i} - {name}
@@ -189,7 +178,7 @@ class WriterAgent(BaseTool):
         return "\n".join(analyses)
 
     def _generate_candidate_recommendation(
-        self, rank: int, score: float, percentage: float
+        self, rank: int, percentage: float
     ) -> str:
         """Generate specific recommendation for each candidate"""
 
