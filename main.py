@@ -12,8 +12,8 @@ def main():
     # Compare all candidate CVs against a job brief to identify the most suitable candidates.
 
     # INPUT SOURCES:
-    # - CV Files: All .txt files located in the directory "./cvs" 
     # - Job Brief: The file "brief2.txt" containing the job description and requirements
+    # - CV Files: All .txt files located in the directory "./cvs" 
 
     # PROCESSING REQUIREMENTS:
     # 1. Extract content from brief2.txt as the job brief content
