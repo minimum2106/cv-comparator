@@ -63,7 +63,7 @@ class ToolRetriever(BaseRetriever):
         enhanced_query = self._generate_enhanced_query(query)
 
         # Search vector store
-        tool_documents = self.vector_store.similarity_search(enhanced_query, k=1)
+        tool_documents = self.vector_store.similarity_search(enhanced_query, k=3)
 
         # Enhance documents with tool metadata
         enhanced_docs = []

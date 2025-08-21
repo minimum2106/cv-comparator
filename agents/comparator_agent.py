@@ -73,12 +73,15 @@ class CriteriaAnalysis(BaseModel):
     """Structured output for criteria analysis"""
 
     criteria_found: List[str] = Field(
+        default_factory=list,
         description="List of criteria that are present in the CV"
     )
     criteria_missing: List[str] = Field(
+        default_factory=list,
         description="List of criteria that are missing from the CV"
     )
     analysis_notes: str = Field(
+        default="",
         description="Brief notes about the candidate's profile and strengths"
     )
 
@@ -93,6 +96,7 @@ class ComparatorAgent(BaseTool):
         "and returns a structured report"
     )
     args_schema: Type[BaseModel] = ComparatorInput
+    return_direct: bool = True
 
     def __init__(self):
         super().__init__()
@@ -214,7 +218,6 @@ class ComparatorAgent(BaseTool):
 
             # Calculate scores based on LLM analysis
             raw_score = 0
-            criterion_results = {}
 
             # Check must-have criteria (+1 point each)
             for criterion in must_have_criteria:
@@ -239,7 +242,6 @@ class ComparatorAgent(BaseTool):
                 "raw_score": raw_score,
                 "max_possible_score": max_possible_score,
                 "percentage": percentage,
-                "criterion_results": criterion_results,
                 "llm_analysis": {
                     "criteria_found": analysis.criteria_found,
                     "criteria_missing": analysis.criteria_missing,
@@ -315,19 +317,12 @@ class ComparatorAgent(BaseTool):
             row = f"| {rank} | {candidate.get('filename', 'N/A')} | "
 
             # Add must-have results
-            for criterion in must_have_criteria:
-                result = candidate["criterion_results"].get(
-                    f"{criterion} (Must)", "❌ Missing"
-                )
-                status = "✅" if "Found" in result else "❌"
-                row += f"{status} | "
+            for criterion in (must_have_criteria + nice_to_have_criteria):
+                if criterion in candidate.get("llm_analysis", {}).get("criteria_found", []):
+                    status = "+"
+                else:
+                    status = "-"
 
-            # Add nice-to-have results
-            for criterion in nice_to_have_criteria:
-                result = candidate["criterion_results"].get(
-                    f"{criterion} (Nice)", "❌ Missing"
-                )
-                status = "✅" if "Found" in result else "❌"
                 row += f"{status} | "
 
             # Add summary scores
@@ -342,8 +337,7 @@ class ComparatorAgent(BaseTool):
 
             rows.append(row)
 
-
-        return header + separator + "\n".join(rows) 
+        return header + separator + "\n".join(rows)
 
     def read_txt_directory(self, directory: str) -> ReadTxtDirectoryOutput:
         """Read all .txt files from a directory and return their contents."""

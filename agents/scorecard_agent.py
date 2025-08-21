@@ -54,6 +54,7 @@ class ScorecardAgent(BaseTool):
         """
     )
     args_schema: Type[BaseModel] = ScorecardInput
+    return_direct: bool = True
 
     def __init__(self):
         super().__init__()

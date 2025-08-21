@@ -119,14 +119,10 @@ class Orchestrator:
             final_state = graph.invoke(Command(resume=user_input), config=config)
 
         # Clear screen for final result
-        self.ui.clear_screen()
         self.ui.print_header("Analysis Complete", "✅")
 
         # Extract or generate final answer
-        if hasattr(final_state, "response") and final_state.response:
-            final_answer = final_state.response
-        else:
-            final_answer = "No response generated."
+        final_answer = final_state.get("response", "No response generated.")
 
         # Display final result with styling
         self.ui.print_assistant_message(final_answer)
@@ -326,11 +322,6 @@ class Orchestrator:
 
         tool_names = [tool.name for tool in step_tools] if step_tools else []
         self.ui.print_tools_found(len(step_tools), tool_names)
-
-        # Build plan string from all steps for context
-        plan_str = "\n".join(
-            f"{i + 1}. {step.description}" for i, step in enumerate(state.steps)
-        )
 
         # Filter context based on dependencies
         filtered_context = []
@@ -536,22 +527,7 @@ class Orchestrator:
     def _generate_final_response(self, state: OrchestratorState):
         """Generate final response when all steps are completed"""
 
-        if not state.past_steps:
-            return "No steps were executed successfully."
-
-        final_prompt = f"""
-        Based on the execution of all workflow steps, provide a comprehensive final answer:
-
-        Original Query: {state.user_query}
-
-        Completed Steps:
-        {chr(10).join([f"{i+1}. {step}: {result}" for i, (step, result) in enumerate(state.past_steps)])}
-
-        Provide a complete answer to the original user query, incorporating insights from all completed steps.
-        """
-
-        response = self.llm.invoke([HumanMessage(content=final_prompt)])
-        return response.content
+        return state.past_steps[-1][1] if state.past_steps else "No steps executed"
 
     def _validate_user_query(self, state: OrchestratorState):
         """Validate the user's query before processing"""

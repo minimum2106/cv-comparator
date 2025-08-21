@@ -167,7 +167,7 @@ Have a great day! 🌟"""
     def print_step_completed(self, result: str):
         """Print step completion message"""
         print(f"✅ Step completed")
-        print(f"📄 Result: {result[:100]}...")
+        print(f"📄 Result: {result}...")
 
     def print_step_failed(self):
         """Print step failure message"""

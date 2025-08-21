@@ -4,54 +4,85 @@ from pydantic import BaseModel, Field
 from typing import Dict, List, Any, Type
 import json
 from datetime import datetime
+from dotenv import load_dotenv
+import tomllib
+from langchain_groq import ChatGroq
+from langchain_openai import ChatOpenAI
+
+load_dotenv()
+
+with open("project.toml", "rb") as f:
+    config = tomllib.load(f)
+    provider = config.get("project", {}).get("models").get("provider")
+
+    if provider == "openai":
+        model = config.get("project", {}).get("models").get("openai_default")
+        LLM = ChatOpenAI(model=model, temperature=0.0, streaming=False)
+    elif provider == "groq":
+        model = config.get("project", {}).get("models").get("groq_default")
+        LLM = ChatGroq(model=model, temperature=0.0, streaming=False)
+    else:
+        raise ValueError("Unsupported model provider")
 
 
 class WriterInput(BaseModel):
-    comparison_results: Dict[str, Any] = Field(
-        description="Results from CV comparison with ranked candidates"
+    comparison_results: str = Field(
+        description="""
+        Textual representation of the comparison table
+        """
     )
-    evaluation_criteria: Dict[str, int] = Field(
-        description="Evaluation criteria used for scoring"
+    evaluation_criteria: Dict[str, str] = Field(
+        description="""
+            Evaluation criteria with either 'must have' or 'nice to have' 
+            (e.g., {'Have experience working in startups': 'must have', 
+                    'Machine Learning experience': 'nice to have', 
+                    'Bachelor degree in Computer Science': 'must have', 
+                    'AWS cloud experience': 'nice to have',
+                    'Leadership experience': 'nice to have',
+                    'French language skills': 'must have',
+            })
+        """
     )
-
 
 class WriterAgent(BaseTool):
-    """A simple agent for writing final synthesis reports with top candidate recommendations."""
+    """A simple agent for compiling and returning a final synthesis report with top candidate recommendations."""
 
     name: str = "report_writer"
     description: str = (
-        "Generate final synthesis report with top 3 candidate recommendations"
+        "Generate final synthesis report made with comparison results and evaluation criteria"
+        "Return that report to the user"
     )
     args_schema: Type[BaseModel] = WriterInput
+    return_direct: bool = True
 
     def _run(
         self,
-        comparison_results: Dict[str, Any],
-        evaluation_criteria: Dict[str, int],
+        comparison_results: str,
+        evaluation_criteria: Dict[str, str],
     ) -> str:
         """
         Generate final synthesis report with recommendations
         """
-        ranked_candidates = comparison_results.get("ranked_candidates", [])
-        comparison_table = comparison_results.get("comparison_table", "")
+        try:
+            top_candidates_comparison_results = self._get_top_candidates(
+                comparison_results
+            )
 
-        # Get top 3 candidates
-        top_3_candidates = ranked_candidates[:3]
+            # Generate the report
+            report = self._generate_report_structure(
+                top_candidates_comparison_results,
+                evaluation_criteria,
+            )
 
-        # Generate the report
-        report = self._generate_report_structure(
-            top_3_candidates,
-            comparison_table,
-            evaluation_criteria,
-        )
+            return report
 
-        return report
+        except Exception as e:
+            print(f"Error generating report: {e}")
 
     def _generate_report_structure(
         self,
-        top_candidates: List[Dict],
         comparison_table: str,
-        criteria: Dict[str, int],
+        criteria: Dict[str, str],
     ) -> str:
         """Generate structured report with executive summary and recommendations"""
 
@@ -75,14 +106,7 @@ class WriterAgent(BaseTool):
             ---
 
             ## Complete Comparison Results
-
             {comparison_table}
-
-            ---
-
-            ## Top 3 Candidate Recommendations
-
-            {self._generate_top_3_analysis(top_candidates)}
 
             ---
 
@@ -124,92 +148,6 @@ class WriterAgent(BaseTool):
 
         return "\n".join(criteria_list)
 
-    def _generate_top_3_analysis(
-        self, top_candidates: List[Dict]
-    ) -> str:
-        """Generate detailed analysis for top 3 candidates"""
-
-        if not top_candidates:
-            return "No candidates available for analysis."
-
-        analyses = []
-
-        for i, candidate in enumerate(top_candidates, 1):
-            name = candidate.get("name", f"Candidate {i}")
-            total_score = candidate.get("total_score", 0)
-            percentage = candidate.get("percentage", 0)
-            scores = candidate.get("scores", {})
-
-            # Identify strengths (scores above average)
-            strengths = []
-            weaknesses = []
-            avg_score = total_score / len(scores) if scores else 0
-
-            for criterion, score in scores.items():
-                criterion_name = criterion.replace("_", " ").title()
-                if score > avg_score:
-                    strengths.append(f"{criterion_name} ({score:.1f})")
-                elif score < avg_score * 0.7:  # Below 70% of average
-                    weaknesses.append(f"{criterion_name} ({score:.1f})")
-
-            # Generate recommendation
-            recommendation = self._generate_candidate_recommendation(
-                i, percentage
-            )
-
-            analysis = f"""### #{i} - {name}
-                **Overall Score:** {total_score:.1f}/100 ({percentage:.1f}%)
-
-                **Key Strengths:**
-                {chr(10).join([f'- {strength}' for strength in strengths]) if strengths else '- Well-rounded profile across all criteria'}
-
-                **Areas for Validation:**
-                {chr(10).join([f'- {weakness}' for weakness in weaknesses]) if weaknesses else '- No significant concerns identified'}
-
-                **Recommendation:** {recommendation}
-
-                **Interview Priority:** {'High' if i == 1 else 'Medium' if i == 2 else 'Standard'}
-
-                ---
-            """
-
-            analyses.append(analysis)
-
-        return "\n".join(analyses)
-
-    def _generate_candidate_recommendation(
-        self, rank: int, percentage: float
-    ) -> str:
-        """Generate specific recommendation for each candidate"""
-
-        if rank == 1:
-            if percentage >= 80:
-                return "**Strongly Recommended** - Excellent match for the position with outstanding qualifications."
-            elif percentage >= 70:
-                return "**Highly Recommended** - Very good fit with strong qualifications across key areas."
-            else:
-                return "**Recommended** - Good candidate with solid foundation, some areas may need development."
-
-        elif rank == 2:
-            if percentage >= 75:
-                return (
-                    "**Recommended** - Strong second choice with excellent potential."
-                )
-            elif percentage >= 65:
-                return "**Consider for Interview** - Good alternative candidate with solid qualifications."
-            else:
-                return "**Backup Candidate** - Acceptable option if top candidates are unavailable."
-
-        else:  # rank == 3
-            if percentage >= 70:
-                return (
-                    "**Consider for Interview** - Solid third option worth evaluating."
-                )
-            elif percentage >= 60:
-                return "**Backup Option** - Reasonable candidate for broader consideration."
-            else:
-                return "**Reserve Candidate** - Consider if candidate pool needs expansion."
-
     def _generate_interview_focus(self, criteria: Dict[str, int]) -> str:
         """Generate interview focus areas based on evaluation criteria"""
 
@@ -224,3 +162,29 @@ class WriterAgent(BaseTool):
             )
 
         return "\n".join(focus_areas)
+
+    def _get_top_candidates(self, comparison_results: str) -> str:
+        """Extract top 3 candidates from the comparison results table"""
+        lines = comparison_results.split("\n")
+        print(len(lines))
+
+        # Find header, separator, and first 3 data rows
+        result_lines = []
+        data_count = 0
+
+        for line in lines:
+            # Always include header (contains "Rank")
+            if "Rank" in line and "Filename" in line:
+                print("Including header")
+                result_lines.append(line)
+            # Always include separator line (contains only |, -, :, and spaces)
+            elif line.strip() and all(c in "|-: " for c in line.strip()):
+                
+                result_lines.append(line)
+            # Include only first 3 data rows
+            elif line.strip().startswith("|") and data_count < 3:
+                print("Including data row")
+                result_lines.append(line)
+                data_count += 1
+
+        return "\n".join(result_lines)
