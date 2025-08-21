@@ -1,4 +1,3 @@
-from typing import Optional
 import unicodedata
 import os
 import re

@@ -38,9 +38,6 @@ def main():
     # Please execute this CV comparison workflow and provide comprehensive results.
     # """
 
-    user_query = "hello, I want to do something"
-    
-    
     # Run the orchestrator
     final_result = orchestrator.run()
 

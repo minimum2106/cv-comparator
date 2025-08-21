@@ -1,28 +1,8 @@
-from struct import Struct
+from typing import Dict, Type
+from datetime import datetime
+
 from langchain_core.tools import BaseTool
 from pydantic import BaseModel, Field
-from typing import Dict, List, Any, Type
-import json
-from datetime import datetime
-from dotenv import load_dotenv
-import tomllib
-from langchain_groq import ChatGroq
-from langchain_openai import ChatOpenAI
-
-load_dotenv()
-
-with open("project.toml", "rb") as f:
-    config = tomllib.load(f)
-    provider = config.get("project", {}).get("models").get("provider")
-
-    if provider == "openai":
-        model = config.get("project", {}).get("models").get("openai_default")
-        LLM = ChatOpenAI(model=model, temperature=0.0, streaming=False)
-    elif provider == "groq":
-        model = config.get("project", {}).get("models").get("groq_default")
-        LLM = ChatGroq(model=model, temperature=0.0, streaming=False)
-    else:
-        raise ValueError("Unsupported model provider")
 
 
 class WriterInput(BaseModel):

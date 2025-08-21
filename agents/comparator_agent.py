@@ -1,32 +1,15 @@
-from typing import List, Dict, Any, Type
-from dotenv import load_dotenv
-from pathlib import Path
-import tomllib
+from typing import List, Dict, Type
 import json
 import os
 
 from langchain_core.tools import BaseTool
-from langchain_openai import ChatOpenAI
-from langchain_groq import ChatGroq
 from langchain_core.messages import HumanMessage
 from pydantic import BaseModel, Field
 
 from agents.utils import read_txt_file
+from common.call_llm import get_llm
 
-load_dotenv()
 
-with open("project.toml", "rb") as f:
-    config = tomllib.load(f)
-    provider = config.get("project", {}).get("models").get("provider")
-
-    if provider == "openai":
-        model = config.get("project", {}).get("models").get("openai_default")
-        LLM = ChatOpenAI(model=model, temperature=0.0, streaming=False)
-    elif provider == "groq":
-        model = config.get("project", {}).get("models").get("groq_default")
-        LLM = ChatGroq(model=model, temperature=0.0, streaming=False)
-    else:
-        raise ValueError("Unsupported model provider")
     
 
 class ReadTxtDirectoryInput(BaseModel):
@@ -140,6 +123,7 @@ class ComparatorAgent(BaseTool):
         """
 
         try:
+            LLM = get_llm()
             structured_llm = LLM.with_structured_output(CriteriaAnalysis)
             response = structured_llm.invoke([HumanMessage(content=analysis_prompt)])
 

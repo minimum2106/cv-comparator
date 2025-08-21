@@ -1,10 +1,8 @@
-import os
-import sys
-from typing import List, Union, Annotated, Dict
+from typing import List, Annotated
 from dotenv import load_dotenv
-import tomllib
 import operator
 import uuid
+import sys
 import re
 
 from langgraph.types import Command, interrupt
@@ -12,15 +10,13 @@ from langgraph.prebuilt import create_react_agent
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.graph import StateGraph, END, START
 from langchain_core.messages import HumanMessage, SystemMessage
-from langchain_core.tools import BaseTool
-from langchain_groq import ChatGroq
-from langchain_openai import ChatOpenAI
 from pydantic import BaseModel, Field
 
 from agents.prompts import GENERATE_PLAN_SYSTEM_PROMPT, VALIDATE_USER_QUERY
 from retrievers.tool_retriever import tool_retriever
 from common.ui_manager import UIManager
 from common.schemas import TaskStep
+from common.call_llm import get_llm
 
 
 load_dotenv()
@@ -39,19 +35,7 @@ class Orchestrator:
     def __init__(self):
         self.agent_database = {}
         self.ui = UIManager()
-
-        with open("project.toml", "rb") as f:
-            config = tomllib.load(f)
-            provider = config.get("project", {}).get("models").get("provider")
-
-            if provider == "openai":
-                model = config.get("project", {}).get("models").get("openai_default")
-                self.llm = ChatOpenAI(model=model, temperature=0.0, streaming=False)
-            elif provider == "groq":
-                model = config.get("project", {}).get("models").get("groq_default")
-                self.llm = ChatGroq(model=model, temperature=0.0, streaming=False)
-            else:
-                raise ValueError("Unsupported model provider")
+        self.llm = get_llm()
 
     def _handle_quit(self):
         """Handle user quit command with styled exit message"""
